@@ -60,6 +60,27 @@ def test_los_tramos_se_abren_de_uno_en_uno(monkeypatch):
     assert all(x in google.permisos() for x in google.PERMISOS_ESCRIBIR)
 
 
+def test_abrir_la_agenda_no_abre_el_envio_de_correo(monkeypatch):
+    """EL TRAMO QUE IMPORTA. El operador aprobo el 2026-09-27 que Zeno proponga citas, y nada mas.
+    Mientras "escribir" era un solo tramo, abrir la agenda habria pedido tambien `gmail.send`, o
+    sea permiso para escribir a sus clientes en su nombre, de rebote y sin que nadie lo decidiera.
+
+    Son dos cosas distintas y por eso son dos tramos: una cita mal puesta se borra, un correo
+    enviado no se recoge.
+    """
+    monkeypatch.setenv("ZENO_TRAMO", "agenda")
+    p = google.permisos()
+    assert google.PERMISO_AGENDA in p, "el tramo de agenda tiene que abrir calendar.events"
+    assert google.PERMISO_ENVIAR not in p, "y NO puede abrir gmail.send"
+    assert google.PERMISO_BORRADOR not in p, "ni los borradores, que son otro tramo"
+
+
+def test_un_tramo_que_no_existe_no_abre_nada_de_mas(monkeypatch):
+    """Una errata en el `.env` no puede acabar concediendo mas de lo que dice la palabra."""
+    monkeypatch.setenv("ZENO_TRAMO", "escrbir")
+    assert google.permisos() == google.PERMISOS_LEER
+
+
 def test_enviar_y_mover_citas_van_juntos_y_aparte():
     """Son los dos que salen al mundo. Se declaran en su propia lista para que se vea de un vistazo
     qué es lo peligroso, en vez de estar mezclados con los de leer."""

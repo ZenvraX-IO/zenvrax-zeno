@@ -88,22 +88,30 @@ PERMISOS_LEER = [
 ]
 #: Tramo B: dejar borradores EN el Gmail del operador. No envia nada.
 PERMISO_BORRADOR = "https://www.googleapis.com/auth/gmail.compose"
-#: Tramo D: lo que sale al mundo. Fuera de la lista a proposito.
-PERMISOS_ESCRIBIR = [
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/calendar.events",
-]
+#: Tramo D, la agenda: crear y mover citas. Sale al mundo, pero solo hacia el calendario.
+PERMISO_AGENDA = "https://www.googleapis.com/auth/calendar.events"
+#: Tramo E, el correo que se envia. ES OTRA COSA y va aparte, porque un correo mandado en tu nombre
+#: llega a un cliente. Aprobar la agenda no aprueba esto: el operador aprobo el 2026-09-27 que Zeno
+#: proponga citas, y nada mas. Juntarlos en un solo tramo habria pedido `gmail.send` de rebote.
+PERMISO_ENVIAR = "https://www.googleapis.com/auth/gmail.send"
+#: Todo lo que sale al mundo, junto, para que un test pueda comprobarlo de un vistazo.
+PERMISOS_ESCRIBIR = [PERMISO_ENVIAR, PERMISO_AGENDA]
+
+
+#: Cada tramo añade lo suyo al anterior. Se declaran asi, en una tabla, para que abrir uno no
+#: arrastre nada que nadie ha aprobado: `agenda` NO incluye enviar correo.
+TRAMOS = {
+    "leer": [],
+    "borrador": [PERMISO_BORRADOR],
+    "agenda": [PERMISO_AGENDA],
+    "escribir": [PERMISO_BORRADOR, PERMISO_AGENDA, PERMISO_ENVIAR],
+}
 
 
 def permisos() -> list[str]:
-    """Los permisos que se piden hoy. `ZENO_TRAMO` los va abriendo: leer | borrador | escribir."""
+    """Los permisos que se piden hoy: leer | borrador | agenda | escribir."""
     tramo = os.environ.get("ZENO_TRAMO", "leer")
-    fuera = list(PERMISOS_LEER)
-    if tramo in ("borrador", "escribir"):
-        fuera.append(PERMISO_BORRADOR)
-    if tramo == "escribir":
-        fuera += PERMISOS_ESCRIBIR
-    return fuera
+    return list(PERMISOS_LEER) + TRAMOS.get(tramo, [])
 
 
 class SinConfigurar(RuntimeError):

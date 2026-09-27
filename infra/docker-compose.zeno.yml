@@ -43,7 +43,7 @@ services:
       GOOGLE_CLIENT_SECRET_ZENVRAX: ${GOOGLE_CLIENT_SECRET_ZENVRAX:-}
       GOOGLE_CLIENT_ID_GUTLYN: ${GOOGLE_CLIENT_ID_GUTLYN:-}
       GOOGLE_CLIENT_SECRET_GUTLYN: ${GOOGLE_CLIENT_SECRET_GUTLYN:-}
-      # Hasta donde llegan los permisos: leer | borrador | escribir. Se queda en LEER hasta que el
+      # Hasta donde llegan los permisos: leer, borrador, agenda, escribir. Cada uno se abre aparte: el
       # operador apruebe el salto, porque `escribir` incluye mandar correo en su nombre.
       ZENO_TRAMO: ${ZENO_TRAMO:-leer}
       # Con que se cifra el permiso en disco. Sin esta clave, Zeno no guarda nada y lo dice.
