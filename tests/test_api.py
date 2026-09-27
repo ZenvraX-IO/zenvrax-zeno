@@ -250,8 +250,12 @@ def test_un_cero_en_ventas_no_se_presenta_como_falta_de_dato():
     texto = _ventas({"resumen": {"period_days": 30, "revenue": 0.0, "orders": 0}})
     assert "ingresos: $0.00" in texto, "la cifra tiene que aparecer, no desaparecer por ser cero"
     assert "TODO A CERO" in texto and "no falta el dato" in texto
-    assert "UN CERO NO ES UNA AUSENCIA" in SISTEMA, (
+    assert "Un CERO es una respuesta" in SISTEMA, (
         "sin la regla en el prompt, el modelo vuelve a leer los ceros como que no sabe")
+    # Y la induccion que lo causaba: decirle que GutLyn "se gestiona desde Xrise" hacia que
+    # repitiera "miralo en Xrise" en vez de leer las cifras que tenia delante.
+    assert "que se gestiona desde Xrise" not in SISTEMA
+    assert "ESTAN en el contexto" in SISTEMA
 
 
 def test_las_ventas_no_se_pasan_como_json_crudo():
