@@ -160,6 +160,32 @@
   .cita .d b{display:block;font-size:14.5px;font-weight:600;line-height:1.3}
   .cita .d span{color:var(--gris);font-size:11.5px}
 
+  /* LOS DOS NEGOCIOS A LA PAR. Una tarjeta por negocio, con la misma rejilla de cifras en las dos
+     para que se puedan comparar de un vistazo. Las cifras usan tabular-nums porque si no, en una
+     columna de numeros, el ancho de cada digito descoloca la lectura. */
+  .negocio{background:var(--carbon);border:1px solid var(--linea);border-radius:13px;
+           padding:14px;margin-bottom:12px}
+  .negocio > h2{margin:0 0 2px;font-size:16px;font-weight:600;display:flex;align-items:baseline;
+                gap:8px}
+  .negocio > h2 em{font-style:normal;font-size:11px;letter-spacing:.7px;text-transform:uppercase;
+                   color:var(--gris)}
+  .negocio .de{color:var(--gris);font-size:11.5px;margin:0 0 12px}
+  .cifras{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+  @media (min-width:560px){.cifras{grid-template-columns:repeat(4,1fr)}}
+  .cifra{background:#1b1b21;border-radius:9px;padding:9px 10px}
+  .cifra .k{color:var(--gris);font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;
+            margin-bottom:3px;line-height:1.25}
+  .cifra .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+  .cifra.bad .v{color:var(--rojo)}
+  .cifra.warn .v{color:var(--ambar)}
+  .espera{margin-top:12px;border-top:1px solid var(--linea);padding-top:11px}
+  .espera .t{font-size:12.5px;color:var(--gris);margin-bottom:8px}
+  .espera .t b{color:var(--ambar);font-size:14px}
+  .espera a{display:flex;justify-content:space-between;gap:10px;text-decoration:none;color:inherit;
+            padding:8px 0;font-size:13.5px;border-top:1px solid #1e1e24;min-height:34px;
+            align-items:center}
+  .espera a span{color:var(--ambar);font-weight:600;font-variant-numeric:tabular-nums}
+
   .login{max-width:360px;margin:0 auto;padding:50px 4px}
   .login .marca{width:64px;height:64px;margin:0 auto 18px}
   .login h1{text-align:center;margin:0 0 4px;font-size:21px}
@@ -213,6 +239,7 @@
   <main>
     <div id="tiron"><span class="rueda"></span><span id="tiron-texto"></span></div>
     <section id="v-pendientes"></section>
+    <section id="v-negocios" hidden></section>
     <section id="v-personal" hidden></section>
     <section id="v-chat" hidden>
       <div id="burbujas" class="burbujas"></div>
@@ -235,6 +262,7 @@
 
   <nav class="pie">
     <button data-vista="pendientes" class="on">Pendiente</button>
+    <button data-vista="negocios">Negocios</button>
     <button data-vista="personal">Personal</button>
     <button data-vista="chat">Chat</button>
     <button data-vista="buscar">Buscar</button>
@@ -488,6 +516,54 @@ function cargaChat() {
                   "documentación. Todavía no puedo ejecutar nada: te digo dónde está el botón.");
 }
 
+// ---------------------------------------------------------------- los dos negocios a la par
+//
+// Ninguna fuente nueva: son los datos con los que el chat ya contestaba. La diferencia es que
+// mirarlos deja de costar una llamada a la API y una espera.
+//
+// Esta pestaña la quito el operador en la maqueta, con razon: entonces estaba vacia. Vuelve con las
+// cifras dentro porque pidio "poder gestionar ambos negocios a la par".
+
+function pintaNegocio(n) {
+  let h = '<div class="negocio"><h2>' + esc(n.nombre) + "<em>" + esc(n.sub) + "</em></h2>" +
+          '<p class="de">segun ' + esc(n.fuente) + "</p>";
+  // Los fallos van DENTRO de la tarjeta del negocio del que hablan: "no se sabe como va GutLyn" es
+  // un dato distinto de "hay un error por ahi".
+  for (const f of n.fallos || [])
+    h += '<div class="aviso-fallo">' + esc(f) + "</div>";
+
+  h += '<div class="cifras">';
+  for (const k of n.kpis || [])
+    h += '<div class="cifra ' + (k.alerta || "") + '"><div class="k">' + esc(k.k) +
+         '</div><div class="v">' + esc(k.v) + "</div></div>";
+  h += "</div>";
+
+  h += '<div class="espera"><div class="t">Espera tu OK: <b>' + (n.pendiente || 0) + "</b></div>";
+  for (const c of n.colas || [])
+    h += '<a href="#" data-cola="pendientes">' + esc(c.titulo) +
+         "<span>" + c.cuantos + "</span></a>";
+  return h + "</div></div>";
+}
+
+async function cargaNegocios() {
+  const c = $("#v-negocios");
+  c.innerHTML = '<div class="vacio">cargando…</div>';
+  try {
+    const d = await api("/api/negocios");
+    let h = "";
+    for (const f of d.fallos || []) h += '<div class="aviso-fallo">' + esc(f) + "</div>";
+    for (const n of d.negocios || []) h += pintaNegocio(n);
+    c.innerHTML = h;
+    // Cada cola lleva a la pestaña donde se decide, que es la que ya existe.
+    c.querySelectorAll("[data-cola]").forEach(a => a.onclick = (e) => {
+      e.preventDefault();
+      ver("pendientes");
+    });
+  } catch (e) {
+    c.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  }
+}
+
 // ---------------------------------------------------------------- correo y agenda
 //
 // Zeno ENSEÑA el correo, no lo trabaja: cada correo y cada cita es un enlace que abre en Gmail o en
@@ -653,13 +729,16 @@ function enchufaBotonesDeCuenta(c) {
 }
 
 // ---------------------------------------------------------------- navegar
-const TITULOS = { pendientes: "Zeno", personal: "Correo y agenda", chat: "Chat", buscar: "Buscar" };
+const TITULOS = { pendientes: "Zeno", negocios: "Los dos negocios",
+                  personal: "Correo y agenda", chat: "Chat", buscar: "Buscar" };
 function ver(vista) {
-  for (const v of ["pendientes", "personal", "chat", "buscar"]) $("#v-" + v).hidden = v !== vista;
+  for (const v of ["pendientes", "negocios", "personal", "chat", "buscar"])
+    $("#v-" + v).hidden = v !== vista;
   document.querySelectorAll(".pie button").forEach(b =>
     b.classList.toggle("on", b.dataset.vista === vista));
   $("#titulo").textContent = TITULOS[vista];
   if (vista === "pendientes") cargaPendientes();
+  if (vista === "negocios") cargaNegocios();
   if (vista === "personal") cargaPersonal();
   if (vista === "chat") { cargaChat(); $("#pregunta").focus(); }
   if (vista === "buscar") {
@@ -692,6 +771,7 @@ function recargaVista() {
   const actual = document.querySelector(".pie button.on")?.dataset.vista || "pendientes";
   if (actual === "buscar") return busca();
   if (actual === "personal") return cargaPersonal();
+  if (actual === "negocios") return cargaNegocios();
   if (actual === "chat") return;          // recargar un chat seria borrar la conversacion
   return cargaPendientes();
 }

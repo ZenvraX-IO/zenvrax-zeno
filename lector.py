@@ -249,3 +249,87 @@ def ventas_gutlyn() -> tuple[dict, list[str]]:
         else:
             fuera[etiqueta] = datos
     return fuera, fallos
+
+
+# ---------------------------------------------------------------- los dos negocios a la par
+
+def _dinero(v) -> str:
+    """Una cifra de dinero como se lee, no como la guarda la base."""
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return "sin dato"
+    return f"${n:,.0f}".replace(",", ".") if abs(n) >= 1000 else f"${n:,.2f}".rstrip("0").rstrip(".")
+
+
+def _numero(v, sufijo: str = "") -> str:
+    if v is None:
+        return "sin dato"
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    entero = f"{int(n):,}".replace(",", ".") if n == int(n) else f"{n:,.1f}".replace(",", ".")
+    return entero + sufijo
+
+
+def negocios() -> tuple[list[dict], list[str]]:
+    """Los dos negocios uno al lado del otro: como van y que espera tu OK en cada uno.
+
+    NO HAY NINGUNA FUENTE NUEVA. Todo esto ya lo leia Zeno para contestar en el chat: los KPI de
+    Zenvrax salen del cockpit, las cifras de GutLyn de Xrise y lo pendiente de las dos colas. Lo que
+    faltaba era la pantalla: para saber como iba un negocio habia que preguntarselo al chat, o sea
+    pagar una llamada a la API y esperar, para leer numeros que ya estaban ahi.
+
+    Cada negocio trae sus fallos DENTRO de su tarjeta y no en un monton comun: si Xrise no contesta,
+    lo que no se sabe es como va GutLyn, y esa distincion se pierde en una lista de errores suelta.
+    """
+    fallos: list[str] = []
+    est, f1 = estado()
+    ventas, f2 = ventas_gutlyn()
+    colas, f3 = pendiente_completo()
+    fallos += f1 + f2 + f3
+
+    # Lo pendiente se reparte por negocio. El nombre viene de las colas tal cual, asi que se compara
+    # en minusculas: "GutLyn" y "gutlyn" son el mismo sitio.
+    por_negocio: dict[str, list[dict]] = {}
+    for c in colas:
+        por_negocio.setdefault(str(c.get("negocio", "")).lower(), []).append(c)
+
+    def bloque(ident, nombre, sub, kpis, fuente):
+        mias = por_negocio.get(ident, [])
+        return {"id": ident, "nombre": nombre, "sub": sub, "fuente": fuente, "kpis": kpis,
+                "pendiente": sum(c.get("cuantos", 0) for c in mias),
+                "colas": [{"titulo": c.get("titulo"), "cuantos": c.get("cuantos"),
+                           "donde": c.get("donde")} for c in mias]}
+
+    # ZENVRAX. El cockpit ya devuelve los KPI con su alerta y su enlace: se pasan tal cual en vez de
+    # recalcularlos aqui, que seria el mismo dato en dos sitios y con dos verdades.
+    kpis_z = []
+    for n in ((est.get("zenvrax") or {}).get("negocios") or []):
+        if str(n.get("id", "")).lower() == "zenvrax":
+            kpis_z = n.get("kpis") or []
+    fuera = [bloque("zenvrax", "Zenvrax IO", "consultoría", kpis_z, "cockpit")]
+
+    # GUTLYN. El cockpit devuelve la ficha del negocio sin KPI (los lleva Xrise), asi que se arman
+    # desde las ventas. Un cero es un cero y se escribe: "sin dato" solo cuando de verdad falta.
+    r = (ventas.get("resumen") or {})
+    kpis_g = [
+        {"k": "Ingresos 30d", "v": _dinero(r.get("revenue"))},
+        {"k": "Pedidos", "v": _numero(r.get("orders"))},
+        {"k": "Beneficio neto", "v": _dinero(r.get("net_profit")),
+         "alerta": "bad" if (r.get("net_profit") or 0) < 0 else None},
+        {"k": "Margen", "v": _numero(r.get("net_margin_pct"), "%")},
+        {"k": "Publicidad", "v": _dinero(r.get("ad_spend"))},
+        {"k": "TACoS", "v": _numero(r.get("tacos_pct"), "%")},
+        {"k": "Ticket medio", "v": _dinero(r.get("avg_order_value"))},
+        {"k": "Devoluciones", "v": _dinero(r.get("returns_amount"))},
+    ]
+    fuera.append(bloque("gutlyn", "GutLyn+", "ecommerce", kpis_g, "Xrise"))
+
+    # Cada fallo se pega al negocio del que habla: "no se sabe como va GutLyn" es un dato distinto
+    # de "hay un error por ahi".
+    for b in fuera:
+        b["fallos"] = [f for f in fallos if b["id"] in f.lower() or b["nombre"].lower() in f.lower()]
+    sueltos = [f for f in fallos if not any(f in b["fallos"] for b in fuera)]
+    return fuera, sueltos

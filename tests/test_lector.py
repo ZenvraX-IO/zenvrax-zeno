@@ -130,3 +130,68 @@ def test_las_etiquetas_del_aviso_cuadran_con_el_catalogo():
     assert ("cockpit", "✅ Marcar publicado") in indice
     ficha = indice[("xrise", "✅ Aprobar y publicar")]
     assert ficha.efecto == C.PUBLICA
+
+
+# ---------------------------------------------------------------- los dos negocios a la par
+
+def _pon(monkeypatch, est=None, ventas=None, colas=None, fallos=()):
+    monkeypatch.setattr(lector, "estado", lambda: (est or {}, list(fallos)))
+    monkeypatch.setattr(lector, "ventas_gutlyn", lambda: (ventas or {}, []))
+    monkeypatch.setattr(lector, "pendiente_completo", lambda: (colas or [], []))
+
+
+def test_los_dos_negocios_salen_aunque_uno_no_conteste(monkeypatch):
+    """EL TEST QUE IMPORTA de esta pantalla. Si Xrise esta caido y GutLyn desaparece de la vista, el
+    operador ve una sola tarjeta y lee "solo tengo un negocio", no "no he podido leer el otro"."""
+    _pon(monkeypatch, est={}, ventas={}, fallos=["ventas de GutLyn (resumen): HTTP 502"])
+    lista, sueltos = lector.negocios()
+    assert [b["id"] for b in lista] == ["zenvrax", "gutlyn"]
+    assert any("502" in f for f in lista[1]["fallos"]), (
+        "el fallo tiene que ir DENTRO de la tarjeta de GutLyn, no en un monton comun")
+    assert sueltos == []
+
+
+def test_un_cero_es_un_cero_y_no_se_disfraza_de_falta_de_dato(monkeypatch):
+    """Ya paso con el chat: leyo los ceros de GutLyn y contesto que no tenia el dato. Cero ventas es
+    una respuesta, y ademas es la verdad hasta que arranque la tienda."""
+    _pon(monkeypatch, ventas={"resumen": {"revenue": 0.0, "orders": 0, "net_profit": 0.0}})
+    g = [b for b in lector.negocios()[0] if b["id"] == "gutlyn"][0]
+    por = {k["k"]: k["v"] for k in g["kpis"]}
+    assert por["Ingresos 30d"] == "$0"
+    assert por["Pedidos"] == "0"
+    # Y lo que de verdad falta si se dice que falta, sin inventar un cero.
+    assert por["Margen"] == "sin dato"
+
+
+def test_lo_pendiente_se_reparte_por_negocio(monkeypatch):
+    """Sumar 113 en un solo numero no dice a cual de los dos hay que atender hoy."""
+    _pon(monkeypatch, colas=[
+        {"negocio": "Zenvrax", "titulo": "Posts de X", "cuantos": 44, "donde": "/x"},
+        {"negocio": "GutLyn", "titulo": "Posts por aprobar", "cuantos": 17, "donde": "/g"},
+        {"negocio": "gutlyn", "titulo": "Correos", "cuantos": 3, "donde": "/c"}])
+    porid = {b["id"]: b for b in lector.negocios()[0]}
+    assert porid["zenvrax"]["pendiente"] == 44
+    # Dos colas del mismo negocio escritas distinto son el MISMO negocio: si no, GutLyn saldria a la
+    # mitad de lo que tiene y nadie lo notaria.
+    assert porid["gutlyn"]["pendiente"] == 20
+    assert len(porid["gutlyn"]["colas"]) == 2
+
+
+def test_el_beneficio_negativo_se_marca(monkeypatch):
+    """Es el unico numero de la tarjeta que cambia una decision al verlo. Sin marca, un menos se
+    lee igual que un mas en una rejilla de ocho cifras."""
+    _pon(monkeypatch, ventas={"resumen": {"net_profit": -320.0}})
+    g = [b for b in lector.negocios()[0] if b["id"] == "gutlyn"][0]
+    ben = [k for k in g["kpis"] if k["k"] == "Beneficio neto"][0]
+    assert ben["alerta"] == "bad" and ben["v"].startswith("$-")
+
+
+def test_los_kpi_de_zenvrax_se_pasan_tal_cual(monkeypatch):
+    """El cockpit ya los calcula con su alerta y su enlace. Recalcularlos aqui seria el mismo dato
+    en dos sitios, que en esta casa ya ha causado tres incidentes."""
+    _pon(monkeypatch, est={"zenvrax": {"negocios": [
+        {"id": "zenvrax", "nombre": "Zenvrax IO",
+         "kpis": [{"k": "Runway", "v": "11 meses", "alerta": "warn", "to": "/finanzas/pnl"}]},
+        {"id": "gutlyn", "nombre": "GutLyn+", "kpis": []}]}})
+    z = [b for b in lector.negocios()[0] if b["id"] == "zenvrax"][0]
+    assert z["kpis"] == [{"k": "Runway", "v": "11 meses", "alerta": "warn", "to": "/finanzas/pnl"}]

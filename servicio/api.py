@@ -165,6 +165,20 @@ async def pendientes(authorization: str = Header(default="")):
     }
 
 
+# ---------------------------------------------------------------- los dos negocios
+
+@app.get("/api/negocios")
+async def api_negocios(authorization: str = Header(default="")):
+    """Como van los dos negocios y que espera tu OK en cada uno.
+
+    Ninguna fuente nueva: son los mismos datos con los que el chat ya contestaba. La diferencia es
+    que mirarlos deja de costar una llamada a la API y una espera.
+    """
+    _quien(authorization)
+    lista, fallos = lector.negocios()
+    return {"negocios": lista, "fallos": fallos}
+
+
 # ---------------------------------------------------------------- la documentación
 
 @app.get("/api/buscar")
