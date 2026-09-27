@@ -17,11 +17,13 @@ USO:
 """
 from __future__ import annotations
 
+import json
+import pathlib
 from dataclasses import dataclass
 
 from .contrato import ABRE, CAMBIA_ESTADO, PUBLICA, Contrato
 from .metadatos import CONTRATOS
-from .recolector import clave, recolecta, sistemas_ausentes
+from .recolector import COLAS, clave, recolecta, sistemas_ausentes
 
 __all__ = ["Accion", "catalogo", "ejecutables", "sin_contrato", "contratos_huerfanos",
            "ABRE", "CAMBIA_ESTADO", "PUBLICA", "Contrato", "sistemas_ausentes"]
@@ -57,8 +59,29 @@ class AccionSinContrato(RuntimeError):
     """
 
 
+def _del_congelado() -> list[Accion]:
+    """El catalogo que viaja DENTRO de la imagen de Zeno.
+
+    En el contenedor no estan los dos repos, asi que no se puede recolectar: sin esto, Zeno saldria
+    con cero acciones y marcaria TODOS los botones "sin contrato", que es peor que no marcar nada
+    porque parece un fallo del sistema y no una falta de datos.
+    """
+    fichero = pathlib.Path(__file__).resolve().parent / "congelado.json"
+    if not fichero.exists():
+        return []
+    datos = json.loads(fichero.read_text(encoding="utf-8"))
+    return [Accion(**a) for a in datos.get("acciones", [])]
+
+
 def catalogo(sistemas=None) -> list[Accion]:
-    """Todas las acciones con contrato. Lanza si alguna no lo tiene."""
+    """Todas las acciones con contrato. Lanza si alguna no lo tiene.
+
+    Si NINGUN repo esta presente (o sea, se esta ejecutando dentro del contenedor), se usa el
+    catalogo congelado. Fuera de ahi se recolecta de verdad, para que un boton nuevo se vea al
+    momento en el disco del operador.
+    """
+    if len(sistemas_ausentes()) == len(COLAS) and not sistemas:
+        return _del_congelado()
     fuera, faltan = [], []
     for accion in recolecta(sistemas):
         k = clave(accion)

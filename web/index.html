@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101012">
+<title>Zeno</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/img/favicon.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<style>
+  :root{
+    --negro:#101012; --carbon:#17171b; --linea:#26262c; --texto:#f2f2f4; --gris:#9a9aa4;
+    --ambar:#f0a830; --ambar-suave:#3a2c12; --rojo:#e0574a;
+    --arriba:env(safe-area-inset-top,0px); --abajo:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--negro);color:var(--texto);
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       display:flex;flex-direction:column}
+  [hidden]{display:none!important}
+  button{font:inherit}
+
+  .barra{display:flex;align-items:center;gap:10px;padding:calc(14px + var(--arriba)) 16px 14px;
+         border-bottom:1px solid var(--linea);position:sticky;top:0;background:var(--negro);z-index:5}
+  .barra .t{font-weight:600;flex:1}
+  .barra .salir{color:var(--gris);background:none;border:0;font-size:13px}
+  .marca{width:26px;height:26px;border-radius:7px;background:var(--negro);border:1px solid var(--linea);
+         position:relative;flex:0 0 auto}
+  .marca i::before,.marca i::after{content:"";position:absolute;left:5px;right:5px;height:4px;background:#fff}
+  .marca i::before{top:5px} .marca i::after{bottom:5px}
+  .marca s{position:absolute;left:5px;right:5px;top:11px;height:4px;background:#fff;
+           transform:rotate(-27deg)}
+  .marca u{position:absolute;left:11px;top:9px;width:5px;height:5px;border-radius:50%;
+           background:var(--ambar);z-index:2}
+
+  main{flex:1;overflow-y:auto;padding:14px 16px 20px}
+  .pie{display:flex;border-top:1px solid var(--linea);padding-bottom:var(--abajo);background:var(--negro)}
+  .pie button{flex:1;background:none;border:0;color:var(--gris);padding:12px 0 14px;font-size:12px}
+  .pie button.on{color:var(--ambar)}
+
+  .aviso-fallo{background:#2a1a18;border:1px solid #50302a;color:#ffb3aa;border-radius:10px;
+               padding:10px 12px;font-size:13px;margin-bottom:12px}
+  .resumen{color:var(--gris);font-size:13px;margin-bottom:14px}
+  .resumen b{color:var(--ambar)}
+  .tarjeta{background:var(--carbon);border:1px solid var(--linea);border-radius:13px;
+           padding:13px 14px;margin-bottom:12px}
+  .neg{font-size:11px;letter-spacing:.8px;text-transform:uppercase;color:var(--gris);margin-bottom:7px}
+  .neg.gutlyn{color:#b8a0e8}
+  .post{font-weight:600;margin-bottom:5px;line-height:1.35}
+  .extracto{color:var(--gris);font-size:13px;margin-bottom:11px;white-space:pre-wrap}
+  .btns{display:flex;gap:7px;flex-wrap:wrap}
+  .b{border:1px solid var(--linea);background:#1e1e24;color:var(--texto);border-radius:9px;
+     padding:9px 12px;font-size:13px;display:inline-flex;align-items:center;gap:6px;
+     text-decoration:none;cursor:pointer}
+  .b.primaria{background:var(--ambar);color:#221a08;border-color:var(--ambar);font-weight:600}
+  .b.gasta{border-color:#4a3a14;background:var(--ambar-suave)}
+  .b.sin{border-style:dashed;color:var(--gris)}
+  .marca-accion{font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;padding:2px 6px;
+                border-radius:5px}
+  .m-mundo{background:#40201c;color:#ffb3aa}
+  .m-cuesta{background:var(--ambar-suave);color:#f3c579}
+  .vacio{color:var(--gris);text-align:center;padding:40px 10px}
+
+  .buscador{width:100%;background:var(--carbon);border:1px solid var(--linea);border-radius:10px;
+            padding:11px 13px;color:var(--texto);font-size:14px;margin-bottom:13px}
+  .doc{border-left:2px solid var(--ambar);padding-left:11px;margin-bottom:12px}
+  .doc .t{font-weight:600;font-size:14px}
+  .doc .s{color:var(--gris);font-size:13px}
+  .degradado{color:#f3c579;font-size:12.5px;margin-bottom:10px}
+
+  .login{max-width:360px;margin:0 auto;padding:50px 4px}
+  .login .marca{width:54px;height:54px;border-radius:14px;margin:0 auto 18px}
+  .login .marca i::before,.login .marca i::after{left:10px;right:10px;height:8px}
+  .login .marca i::before{top:10px} .login .marca i::after{bottom:10px}
+  .login .marca s{left:10px;right:10px;top:23px;height:8px}
+  .login .marca u{left:23px;top:20px;width:11px;height:11px}
+  .login h1{text-align:center;margin:0 0 4px;font-size:21px}
+  .login p{text-align:center;color:var(--gris);margin:0 0 24px;font-size:13px}
+  .campo{width:100%;background:#0d0d10;border:1px solid var(--linea);border-radius:10px;
+         padding:13px;color:var(--texto);font-size:16px;margin-bottom:11px}
+  .grande{width:100%;justify-content:center;padding:13px}
+  .error{color:#ffb3aa;font-size:13px;text-align:center;margin-top:12px;min-height:19px}
+</style>
+</head>
+<body>
+
+<!-- ENTRAR -->
+<div id="pantalla-login" class="login">
+  <div class="marca"><i></i><s></s><u></u></div>
+  <h1>Zeno</h1>
+  <p>Lo que espera tu OK, de los dos negocios</p>
+  <div id="paso1">
+    <input id="email" class="campo" type="email" placeholder="correo" autocomplete="username">
+    <input id="pass" class="campo" type="password" placeholder="contraseña"
+           autocomplete="current-password">
+    <button id="btn-entrar" class="b primaria grande">Entrar</button>
+  </div>
+  <div id="paso2" hidden>
+    <p style="margin-bottom:14px">Código de 6 cifras del mismo autenticador que el cockpit</p>
+    <input id="codigo" class="campo" inputmode="numeric" autocomplete="one-time-code"
+           placeholder="000000">
+    <button id="btn-codigo" class="b primaria grande">Comprobar</button>
+  </div>
+  <div id="error-login" class="error"></div>
+</div>
+
+<!-- LA APLICACION -->
+<div id="app" hidden style="display:flex;flex-direction:column;height:100%">
+  <div class="barra">
+    <div class="marca"><i></i><s></s><u></u></div>
+    <div class="t" id="titulo">Zeno</div>
+    <button class="salir" id="btn-salir">salir</button>
+  </div>
+
+  <main>
+    <section id="v-pendientes"></section>
+    <section id="v-chat" hidden></section>
+    <section id="v-buscar" hidden>
+      <input id="q" class="buscador" placeholder="qué dice la documentación sobre…">
+      <div id="resultados"></div>
+    </section>
+  </main>
+
+  <nav class="pie">
+    <button data-vista="pendientes" class="on">Pendiente</button>
+    <button data-vista="chat">Chat</button>
+    <button data-vista="buscar">Buscar</button>
+  </nav>
+</div>
+
+<script>
+// La sesión es el token del cockpit. Se guarda en localStorage dentro de try/catch: en una ventana
+// privada el acceso puede lanzar, y eso dejaría la aplicación en blanco sin decir por qué.
+const LLAVE = "zeno.token";
+const guarda = {
+  leer(){ try { return localStorage.getItem(LLAVE) || ""; } catch { return ""; } },
+  poner(v){ try { localStorage.setItem(LLAVE, v); } catch {} },
+  tirar(){ try { localStorage.removeItem(LLAVE); } catch {} },
+};
+let token = guarda.leer();
+let challenge = "";
+
+async function api(ruta, opciones = {}) {
+  const r = await fetch(ruta, {
+    ...opciones,
+    headers: { "Content-Type": "application/json",
+               ...(token ? { Authorization: "Bearer " + token } : {}),
+               ...(opciones.headers || {}) },
+  });
+  if (r.status === 401) { salir(); throw new Error("sesión caducada"); }
+  const datos = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(datos.detail || ("error " + r.status));
+  return datos;
+}
+
+const $ = (s) => document.querySelector(s);
+const esc = (t) => String(t ?? "").replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ---------------------------------------------------------------- entrar
+async function entrar() {
+  $("#error-login").textContent = "";
+  try {
+    const r = await api("/api/login", { method: "POST", body: JSON.stringify({
+      email: $("#email").value.trim(), password: $("#pass").value }) });
+    if (r.twofa_required) { challenge = r.challenge; $("#paso1").hidden = true;
+                            $("#paso2").hidden = false; $("#codigo").focus(); return; }
+    dentro(r.token);
+  } catch (e) { $("#error-login").textContent = e.message; }
+}
+
+async function comprobarCodigo() {
+  $("#error-login").textContent = "";
+  try {
+    const r = await api("/api/login/2fa", { method: "POST", body: JSON.stringify({
+      challenge, code: $("#codigo").value.trim() }) });
+    dentro(r.token);
+  } catch (e) { $("#error-login").textContent = e.message; }
+}
+
+function dentro(t) {
+  token = t; guarda.poner(t);
+  $("#pantalla-login").hidden = true; $("#app").hidden = false;
+  ver("pendientes");
+}
+
+function salir() {
+  if (token) fetch("/api/salir", { method: "POST",
+                                   headers: { Authorization: "Bearer " + token } }).catch(() => {});
+  token = ""; guarda.tirar();
+  $("#app").hidden = true; $("#pantalla-login").hidden = false;
+  $("#paso1").hidden = false; $("#paso2").hidden = true; $("#pass").value = "";
+}
+
+// ---------------------------------------------------------------- lo que espera tu OK
+function pintaAccion(a) {
+  // El botón grande es "Ver preview" por decisión del operador (27-sep): lo irreversible NO puede
+  // ser lo más fácil de pulsar con el pulgar.
+  const esPreview = /preview|revisar|ver /i.test(a.etiqueta || "");
+  if (!a.op) return `<span class="b sin">${esc(a.etiqueta)} · sin contrato</span>`;
+  const marcas = [];
+  if (a.efecto === "publica") marcas.push('<span class="marca-accion m-mundo">sale al mundo</span>');
+  if (a.coste_api) marcas.push('<span class="marca-accion m-cuesta">cuesta</span>');
+  const clase = esPreview ? "b primaria" : (a.coste_api ? "b gasta" : "b");
+  return `<span class="${clase}">${esc(a.etiqueta)} ${marcas.join(" ")}</span>`;
+}
+
+async function cargaPendientes() {
+  const c = $("#v-pendientes");
+  c.innerHTML = '<div class="vacio">cargando…</div>';
+  try {
+    const d = await api("/api/pendientes");
+    let html = "";
+    // Los fallos van ARRIBA y siempre: una lista corta sin aviso se lee como "hay poco pendiente".
+    for (const f of d.fallos || []) html += `<div class="aviso-fallo">No se ha podido leer ${esc(f)}</div>`;
+    const lista = d.pendientes || [];
+    if (!lista.length) {
+      html += '<div class="vacio">nada espera tu OK' +
+              ((d.fallos || []).length ? "<br>(con lo que se ha podido leer)" : "") + "</div>";
+    } else {
+      const publican = lista.filter(p => p.publica_algo).length;
+      const cuestan = lista.filter(p => p.cuesta_dinero).length;
+      html += `<div class="resumen"><b>${lista.length}</b> ` +
+              (lista.length === 1 ? "cosa espera" : "cosas esperan") + " tu OK · " +
+              `${publican} pueden salir al mundo · ${cuestan} gastan API</div>`;
+      for (const p of lista) {
+        html += `<div class="tarjeta">
+          <div class="neg ${p.negocio === "GutLyn" ? "gutlyn" : ""}">${esc(p.negocio)}</div>
+          <div class="post">${esc(p.titulo)}</div>
+          ${p.cuerpo ? `<div class="extracto">${esc(p.cuerpo.slice(0, 260))}</div>` : ""}
+          <div class="btns">${(p.acciones || []).map(pintaAccion).join("")}</div>
+        </div>`;
+      }
+    }
+    c.innerHTML = html;
+  } catch (e) { c.innerHTML = `<div class="aviso-fallo">${esc(e.message)}</div>`; }
+}
+
+// ---------------------------------------------------------------- buscar
+let tecleando;
+async function busca() {
+  const q = $("#q").value.trim();
+  const c = $("#resultados");
+  if (q.length < 2) { c.innerHTML = ""; return; }
+  try {
+    const d = await api("/api/buscar?q=" + encodeURIComponent(q));
+    let html = "";
+    if (d.modo === "texto")
+      html += '<div class="degradado">Buscando solo por texto: el servicio de significado no responde</div>';
+    if (d.modo === "no disponible")
+      html += '<div class="aviso-fallo">El corpus no está disponible ahora mismo</div>';
+    if (!(d.resultados || []).length) html += '<div class="vacio">nada sobre eso</div>';
+    for (const r of d.resultados || [])
+      html += `<div class="doc"><div class="t">${esc(r.title || r.doc || "?")}</div>
+               ${r.sub ? `<div class="s">${esc(r.sub)}</div>` : ""}</div>`;
+    c.innerHTML = html;
+  } catch (e) { c.innerHTML = `<div class="aviso-fallo">${esc(e.message)}</div>`; }
+}
+
+// ---------------------------------------------------------------- chat (apagado)
+async function cargaChat() {
+  const c = $("#v-chat");
+  try {
+    await api("/api/chat", { method: "POST", body: "{}" });
+  } catch (e) {
+    c.innerHTML = `<div class="vacio">${esc(e.message)}<br><br>
+      <span style="font-size:12.5px">Medido: unos $0,006 por pregunta</span></div>`;
+  }
+}
+
+// ---------------------------------------------------------------- navegar
+const TITULOS = { pendientes: "Zeno", chat: "Chat", buscar: "Buscar" };
+function ver(vista) {
+  for (const v of ["pendientes", "chat", "buscar"]) $("#v-" + v).hidden = v !== vista;
+  document.querySelectorAll(".pie button").forEach(b =>
+    b.classList.toggle("on", b.dataset.vista === vista));
+  $("#titulo").textContent = TITULOS[vista];
+  if (vista === "pendientes") cargaPendientes();
+  if (vista === "chat") cargaChat();
+  if (vista === "buscar") $("#q").focus();
+}
+
+$("#btn-entrar").onclick = entrar;
+$("#btn-codigo").onclick = comprobarCodigo;
+$("#btn-salir").onclick = salir;
+$("#pass").onkeydown = (e) => { if (e.key === "Enter") entrar(); };
+$("#codigo").onkeydown = (e) => { if (e.key === "Enter") comprobarCodigo(); };
+$("#q").oninput = () => { clearTimeout(tecleando); tecleando = setTimeout(busca, 350); };
+document.querySelectorAll(".pie button").forEach(b => b.onclick = () => ver(b.dataset.vista));
+
+// Si ya había sesión, se entra directo. Si el token ya no vale, `api` hace salir() solo.
+if (token) { $("#pantalla-login").hidden = true; $("#app").hidden = false; ver("pendientes"); }
+</script>
+</body>
+</html>

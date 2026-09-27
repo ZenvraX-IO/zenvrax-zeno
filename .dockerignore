@@ -1,0 +1,5 @@
+marca/*.py
+marca/maqueta.html
+__pycache__
+*.pyc
+.pytest_cache

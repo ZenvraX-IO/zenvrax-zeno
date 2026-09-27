@@ -1,0 +1,42 @@
+# Zeno, el asistente. Clona el compose de Xrise, que lleva meses en produccion.
+#
+# Va en la red `zenvrax-io_zenvrax` porque habla con el cockpit por dentro (cockpit-api:8802) en vez
+# de salir a internet y volver: menos latencia y el token no da la vuelta por fuera.
+#
+# NO tiene base de datos. Es una fachada: lee las dos APIs y no guarda nada suyo. Si algun dia
+# necesita guardar algo, eso es una decision nueva y se discute, porque un tercer sitio con estado
+# es la tercera verdad que la arquitectura evita a proposito.
+
+services:
+  zeno-api:
+    build: ..
+    container_name: zeno-api
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    environment:
+      # Por dentro de la red: el cockpit responde en 8802 sin pasar por Caddy.
+      ZENO_COCKPIT_URL: http://cockpit-api:8802
+      ZENO_XRISE_URL: http://ecomops-api:8803
+      ZENO_READ_KEY: ${ZENO_READ_KEY}
+      ZENO_ORG: ${ZENO_ORGS:-gutlyn}
+      # Quien puede entrar. Vacio = cualquiera con sesion valida del cockpit; en produccion, el
+      # correo del operador, porque Zeno tiene UN usuario (decision del 2026-09-27).
+      ZENO_USUARIOS: ${ZENO_USUARIOS:-}
+      # El chat gasta API (~$0,006 por pregunta). Nace apagado: se enciende cuando el operador
+      # aprueba ese gasto recurrente, no por defecto.
+      ZENO_CHAT_ACTIVO: ${ZENO_CHAT_ACTIVO:-0}
+    networks: [zenvrax]
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://localhost:8804/api/salud',timeout=5)"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 15s
+
+networks:
+  zenvrax:
+    external: true
+    name: zenvrax-io_zenvrax

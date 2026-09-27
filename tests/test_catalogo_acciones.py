@@ -173,3 +173,40 @@ def test_se_sabe_cuales_no_tienen_ninguna_guarda():
         assert len(sin_guarda) == cuantas, (
             f"{sistema}: cambio el numero de acciones que mutan sin ninguna guarda "
             f"({len(sin_guarda)}, se esperaban {cuantas}): " + ", ".join(sin_guarda))
+
+
+# ---------------------------------------------------------------- el catalogo que viaja dentro
+
+def test_el_catalogo_congelado_esta_al_dia():
+    """Dentro del contenedor no están los dos repos, así que Zeno usa un catálogo CONGELADO. Si se
+    desincroniza, el operador ve todos los botones marcados "sin contrato", que parece un fallo del
+    sistema y no una falta de datos.
+
+    Se descubrió escribiendo el Dockerfile, no en producción. Se regenera con:
+        python lab/zeno/catalogo/congelar.py
+    """
+    import json
+    if sistemas_ausentes():
+        return                     # sin los repos no hay con qué comparar
+    fichero = Path(C.__file__).resolve().parent / "congelado.json"
+    assert fichero.exists(), "falta congelado.json: Zeno saldría sin catálogo dentro del contenedor"
+    congelado = json.loads(fichero.read_text(encoding="utf-8"))
+    vivas = {a.op for a in C.catalogo()}
+    guardadas = {a["op"] for a in congelado["acciones"]}
+    assert vivas == guardadas, (
+        "el catálogo congelado no cuadra con las colas.\n"
+        f"  solo en las colas: {sorted(vivas - guardadas)}\n"
+        f"  solo congeladas:   {sorted(guardadas - vivas)}\n"
+        "  regenera con: python lab/zeno/catalogo/congelar.py")
+
+
+def test_el_congelado_conserva_lo_que_importa():
+    """No basta con que estén las mismas acciones: si se perdieran `efecto` o `coste_api`, Zeno
+    dejaría de poder avisar de lo irreversible y de lo que gasta."""
+    import json
+    fichero = Path(C.__file__).resolve().parent / "congelado.json"
+    if not fichero.exists():
+        return
+    for a in json.loads(fichero.read_text(encoding="utf-8"))["acciones"]:
+        for campo in ("op", "efecto", "coste_api", "confirmar", "sistema", "etiqueta"):
+            assert campo in a, f"al congelar se ha perdido {campo}"
