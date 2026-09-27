@@ -153,13 +153,46 @@ def test_los_correos_no_se_guardan_en_ningun_sitio():
     assert not escrituras, f"personal.py escribe en algún sitio: {[n.func.attr for n in escrituras]}"
 
 
-def test_zeno_solo_hace_GET_contra_google():
-    """Con los permisos de hoy ni siquiera podría escribir, pero el día que se abra el tramo de
-    enviar, este test es lo que impide que se cuele por aquí en vez de por el catálogo."""
-    fuente = (RAIZ / "servicio" / "google.py").read_text(encoding="utf-8")
-    cuerpo = fuente[fuente.index("def pide("):]
-    assert "method=" not in cuerpo or 'method="GET"' in cuerpo, (
-        "la función de leer de Google acepta otro método")
+def test_solo_hay_una_puerta_de_escritura_y_se_sabe_quien_la_usa():
+    """Hasta el 2026-09-27 Zeno no escribia en Google, y el guardian decia que `pide` era la unica
+    forma de hablar con el. Al aparecer la agenda que crea citas eso dejo de ser verdad, y este
+    test salto: lo que hace es lo que tiene que hacer.
+
+    La verdad nueva es mas estrecha: hay UNA funcion que escribe, `google.escribe`, y solo la llama
+    `citas.py`, y alli solo desde `confirma()`. El dia que alguien la llame desde otro sitio, lo
+    que se escapa es un correo o una cita que otra persona ya ha visto, y eso no se deshace.
+    """
+    servicio = RAIZ / "servicio"
+    culpables = []
+    for f in servicio.glob("*.py"):
+        arbol = ast.parse(f.read_text(encoding="utf-8"))
+        for n in ast.walk(arbol):
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "escribe"
+                    and getattr(n.func.value, "id", "") == "google"):
+                culpables.append(f.name)
+    assert sorted(set(culpables)) == ["citas.py"], (
+        f"alguien mas escribe en Google: {sorted(set(culpables))}")
+
+
+def test_escribir_en_google_solo_pasa_por_confirmar():
+    """Dentro de citas.py, la escritura tiene que estar en `confirma` y en ningun otro sitio: si
+    `propone` escribiera, la cita existiria antes de que el operador la mirara, que es justo lo que
+    este diseño evita."""
+    arbol = ast.parse((RAIZ / "servicio" / "citas.py").read_text(encoding="utf-8"))
+    dentro_de = []
+    for f in ast.walk(arbol):
+        if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for n in ast.walk(f):
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "escribe"):
+                dentro_de.append(f.name)
+    assert dentro_de == ["confirma"], f"se escribe desde {dentro_de}, no solo desde confirma"
+
+
+def test_personal_sigue_sin_poder_escribir():
+    """El correo se lee y no se toca. Esta parte no ha cambiado y no puede cambiar de rebote."""
     arbol = ast.parse((RAIZ / "servicio" / "personal.py").read_text(encoding="utf-8"))
     llamadas = [n.func.attr for n in ast.walk(arbol) if isinstance(n, ast.Call)
                 and isinstance(n.func, ast.Attribute) and n.func.value.__class__.__name__ == "Name"

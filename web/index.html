@@ -159,6 +159,21 @@
   .cita .d{flex:1;min-width:0}
   .cita .d b{display:block;font-size:14.5px;font-weight:600;line-height:1.3}
   .cita .d span{color:var(--gris);font-size:11.5px}
+  /* PROPONER UNA CITA. Dos tiempos a proposito: primero se ve lo que se va a crear, y solo despues
+     se crea. Por eso la caja de confirmar es visualmente distinta del formulario. */
+  .nueva{background:var(--carbon);border:1px solid var(--linea);border-radius:12px;
+         padding:12px;margin-bottom:12px}
+  .nueva input{width:100%;background:#0d0d10;border:1px solid var(--linea);border-radius:9px;
+               padding:11px;color:var(--texto);font-size:16px;margin-bottom:8px}
+  .nueva .fila{display:flex;gap:8px}
+  .nueva .fila input{flex:1}
+  .propuesta{background:var(--ambar-suave);border:1px solid var(--ambar);border-radius:12px;
+             padding:13px;margin-bottom:12px}
+  .propuesta .q{font-size:15px;font-weight:600;margin-bottom:4px}
+  .propuesta .c{color:#f3c579;font-size:13px;margin-bottom:4px}
+  .propuesta .ojo{color:#ffb3aa;font-size:12.5px;margin-bottom:10px}
+  .choque{background:#2a1a18;border:1px solid #50302a;border-radius:10px;padding:10px 12px;
+          margin-bottom:9px;font-size:13px;color:#ffb3aa;display:block;text-decoration:none}
 
   /* LOS DOS NEGOCIOS A LA PAR. Una tarjeta por negocio, con la misma rejilla de cifras en las dos
      para que se puedan comparar de un vistazo. Las cifras usan tabular-nums porque si no, en una
@@ -657,6 +672,7 @@ async function cargaPersonal() {
   }
 
   const agenda = datos.agenda || [];
+  html += '<div class="apartado">Agenda</div><div id="agenda-extra"></div>';
   html += '<div class="apartado">Próximas citas · 14 días</div>';
   if (!agenda.length) html += '<div class="vacio">nada en las próximas dos semanas</div>';
   for (const a of agenda)
@@ -672,6 +688,104 @@ async function cargaPersonal() {
   c.innerHTML = html;
   enchufaBotonesDeCuenta(c);
   pintaCorreos();
+  pintaAgendaExtra();
+}
+
+// ---------------------------------------------------------------- proponer una cita
+//
+// Dos tiempos, y es la decision del operador: Zeno busca el hueco y prepara la cita, pero NO existe
+// hasta que se pulsa Crear. Una cita con invitados manda un correo que no se puede recoger.
+
+let propuestaViva = null;
+
+async function pintaAgendaExtra() {
+  const caja = $("#agenda-extra");
+  if (!caja) return;
+  caja.innerHTML =
+    '<div class="nueva">' +
+    '<input id="cita-titulo" placeholder="de qué es la cita" autocomplete="off">' +
+    '<div class="fila"><input id="cita-min" type="number" inputmode="numeric" value="30" ' +
+    'min="10" max="480" aria-label="minutos"><button class="b primaria" id="cita-buscar">' +
+    "Buscar hueco</button></div>" +
+    '<div id="cita-huecos"></div></div><div id="cita-propuesta"></div>';
+  $("#cita-buscar").onclick = buscaHuecos;
+
+  // Los choques se piden aparte: son el aviso, y no dependen de que se vaya a crear nada.
+  try {
+    const d = await api("/api/agenda/choques");
+    let h = "";
+    for (const x of d.choques || [])
+      h += '<a class="choque" href="' + esc(x.abrir) + '" target="_blank" rel="noopener">' +
+           "Se pisan " + esc(x.cuando) + ": " + esc(x.uno) + " y " + esc(x.otro) + "</a>";
+    if (h) caja.insertAdjacentHTML("afterbegin", h);
+  } catch (e) { /* sin permiso o sin cuenta: la agenda normal sigue viéndose */ }
+}
+
+async function buscaHuecos() {
+  const caja = $("#cita-huecos");
+  const min = Math.max(10, parseInt($("#cita-min").value, 10) || 30);
+  caja.innerHTML = '<div class="vacio">buscando…</div>';
+  try {
+    const d = await api("/api/agenda/huecos?minutos=" + min + "&dias=10");
+    const hs = d.huecos || [];
+    if (!hs.length) { caja.innerHTML = '<div class="vacio">no hay huecos de ' + min + " min</div>"; return; }
+    let h = '<div class="filtros">';
+    for (const x of hs)
+      h += '<button class="filtro" data-desde="' + esc(x.desde) + '" data-min="' + min + '">' +
+           esc(x.etiqueta) + "</button>";
+    caja.innerHTML = h + "</div>";
+    caja.querySelectorAll("[data-desde]").forEach(b =>
+      b.onclick = () => proponeCita(b.dataset.desde, parseInt(b.dataset.min, 10)));
+  } catch (e) {
+    caja.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  }
+}
+
+async function proponeCita(desde, minutos) {
+  const titulo = ($("#cita-titulo").value || "").trim();
+  if (!titulo) { $("#cita-titulo").focus(); return; }
+  const caja = $("#cita-propuesta");
+  try {
+    const p = await api("/api/agenda/proponer", { method: "POST", body: JSON.stringify(
+      { titulo: titulo, desde: desde, minutos: minutos }) });
+    propuestaViva = p;
+    let h = '<div class="propuesta"><div class="q">' + esc(p.titulo) + "</div>" +
+            '<div class="c">' + esc(p.cuando) + "</div>";
+    // Lo que no se deshace se dice ANTES de confirmar, no despues.
+    if (p.avisa_a_invitados)
+      h += '<div class="ojo">Se enviará invitación a ' + esc((p.con || []).join(", ")) + "</div>";
+    if ((p.choca_con || []).length)
+      h += '<div class="ojo">Ojo: ya tienes algo en ese rato</div>';
+    h += '<div class="btns"><button class="b primaria" id="cita-crear">Crear en el calendario' +
+         '</button><button class="b sin" id="cita-nada">Dejarlo</button></div></div>';
+    caja.innerHTML = h;
+    $("#cita-crear").onclick = creaCita;
+    $("#cita-nada").onclick = () => { propuestaViva = null; caja.innerHTML = ""; };
+  } catch (e) {
+    caja.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  }
+}
+
+async function creaCita() {
+  if (!propuestaViva) return;
+  const b = $("#cita-crear");
+  b.disabled = true; b.textContent = "creando…";
+  try {
+    const r = await api("/api/agenda/confirmar", { method: "POST", body: JSON.stringify(
+      { vale: propuestaViva.vale }) });
+    propuestaViva = null;
+    $("#cita-propuesta").innerHTML =
+      '<div class="propuesta"><div class="q">Creada: ' + esc(r.titulo) + "</div>" +
+      '<div class="c">' + esc(r.cuando) + "</div>" +
+      (r.abrir ? '<a class="b" href="' + esc(r.abrir) + '" target="_blank" rel="noopener">' +
+                 "Verla en el calendario</a>" : "") + "</div>";
+    $("#cita-titulo").value = "";
+    cargaPersonal();
+  } catch (e) {
+    b.disabled = false; b.textContent = "Crear en el calendario";
+    $("#cita-propuesta").insertAdjacentHTML("beforeend",
+      '<div class="aviso-fallo">' + esc(e.message) + "</div>");
+  }
 }
 
 // Se guardan aparte para poder filtrar sin volver a pedirlos a Google: cada lectura son varias

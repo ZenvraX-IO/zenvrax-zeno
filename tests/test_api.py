@@ -70,6 +70,8 @@ def test_no_hay_ningun_endpoint_que_ejecute_una_accion():
         "chat",              # gasta API, y nace apagado
         "google_conectar",   # devuelve la dirección de Google; no toca ni una cola
         "google_olvidar",    # retira un permiso de Google; solo quita, nunca ejecuta
+        "agenda_confirmar",  # crea la cita; el UNICO endpoint que escribe fuera, y pide un vale
+        "agenda_proponer",   # la prepara y devuelve el vale; no toca Google
         "entrar_con_clave",  # cambia la clave propia por un token; no toca ninguna cola
         "login", "login_2fa", "salir",
     ]
@@ -422,3 +424,45 @@ def test_lo_personal_lleva_los_fallos_aunque_haya_correo(monkeypatch):
                                  ["ghidalgo@gutlyn.com: sin conectar todavia"]))
     d = cliente.get("/api/personal", headers=CABECERA).json()
     assert len(d["correos"]) == 1 and d["fallos"]
+
+
+# ---------------------------------------------------------------- la agenda que propone
+
+def test_proponer_una_cita_no_la_crea(monkeypatch):
+    """La promesa de esta pieza, comprobada en el endpoint y no solo en el modulo: el operador pulsa
+    Proponer y en Google todavia no existe nada."""
+    monkeypatch.setattr(api_mod.google, "conectadas", lambda: {"zenvrax": {}})
+    monkeypatch.setattr(api_mod.google, "escribe",
+                        lambda *a, **k: pytest.fail("ha creado la cita al proponer"))
+    monkeypatch.setattr(api_mod.citas, "propone",
+                        lambda *a, **k: {"vale": "v1", "titulo": "X", "avisa_a_invitados": False})
+    r = cliente.post("/api/agenda/proponer", headers=CABECERA,
+                     json={"titulo": "Llamada", "desde": "2030-01-01T10:00:00"})
+    assert r.status_code == 200 and r.json()["vale"] == "v1"
+
+
+def test_confirmar_con_un_vale_muerto_da_410_y_no_crea(monkeypatch):
+    """410 y no 400: la propuesta EXISTIO y ya no esta. El front lo distingue para decir "vuelve a
+    pedirla" en vez de "algo ha ido mal"."""
+    monkeypatch.setattr(api_mod.google, "conectadas", lambda: {"zenvrax": {}})
+    monkeypatch.setattr(api_mod.google, "escribe",
+                        lambda *a, **k: pytest.fail("ha creado la cita sin vale"))
+    r = cliente.post("/api/agenda/confirmar", headers=CABECERA, json={"vale": "inventado"})
+    assert r.status_code == 410
+
+
+def test_sin_permiso_de_escritura_se_dice_lo_que_falta(monkeypatch):
+    """El error crudo de Google es un 403 pelado. Lo que hay que leer es que falta abrir el tramo,
+    porque si no se busca el fallo en el sitio equivocado."""
+    monkeypatch.setattr(api_mod.google, "conectadas", lambda: {"zenvrax": {}})
+    def sin(_v):
+        raise api_mod.google.NoAutorizado("hay que abrir el tramo de calendario")
+    monkeypatch.setattr(api_mod.citas, "confirma", sin)
+    r = cliente.post("/api/agenda/confirmar", headers=CABECERA, json={"vale": "v"})
+    assert r.status_code == 503 and "tramo" in r.json()["detail"]
+
+
+def test_la_agenda_necesita_una_cuenta_conectada(monkeypatch):
+    """Sin cuenta, proponer huecos seria inventarselos."""
+    monkeypatch.setattr(api_mod.google, "conectadas", lambda: {})
+    assert cliente.get("/api/agenda/huecos", headers=CABECERA).status_code == 503

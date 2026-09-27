@@ -34,7 +34,8 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 import lector                                    # noqa: E402
-from servicio import chat as chat_mod, clave as clave_mod, google, personal, sesion  # noqa: E402
+from servicio import (chat as chat_mod, citas, clave as clave_mod, google,  # noqa: E402
+                      personal, sesion)
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -343,6 +344,72 @@ async def google_olvidar(negocio: str = Query(...), authorization: str = Header(
     """Retira el permiso de UNA cuenta. La otra sigue igual."""
     _quien(authorization)
     return {"habia": google.olvida(negocio)}
+
+
+class Propuesta(BaseModel):
+    titulo: str
+    desde: str
+    minutos: int = citas.DURACION_POR_DEFECTO
+    con: list[str] = []
+    donde: str = ""
+
+
+class Vale(BaseModel):
+    vale: str
+
+
+def _cual_buzon() -> str:
+    """De que cuenta se lee la agenda. Hoy hay un buzon; el dia que haya dos, aqui se elige."""
+    conectadas = google.conectadas()
+    for negocio in google.CUENTAS:
+        if negocio in conectadas:
+            return negocio
+    raise HTTPException(503, "No hay ninguna cuenta de Google conectada")
+
+
+@app.get("/api/agenda/huecos")
+async def agenda_huecos(minutos: int = Query(default=citas.DURACION_POR_DEFECTO, ge=10, le=480),
+                        dias: int = Query(default=7, ge=1, le=60),
+                        authorization: str = Header(default="")):
+    """Donde cabe algo de esa duracion. Solo lee."""
+    _quien(authorization)
+    try:
+        return {"huecos": citas.huecos(_cual_buzon(), minutos=minutos, dias=dias)}
+    except google.NoAutorizado as e:
+        raise HTTPException(503, str(e)) from e
+
+
+@app.get("/api/agenda/choques")
+async def agenda_choques(authorization: str = Header(default="")):
+    """Las citas que se pisan. Solo lee."""
+    _quien(authorization)
+    try:
+        return {"choques": citas.choques(_cual_buzon())}
+    except google.NoAutorizado as e:
+        raise HTTPException(503, str(e)) from e
+
+
+@app.post("/api/agenda/proponer")
+async def agenda_proponer(body: Propuesta, authorization: str = Header(default="")):
+    """Prepara una cita y devuelve un vale. NO la crea: eso es el paso siguiente y lo pulsas tu."""
+    _quien(authorization)
+    try:
+        return citas.propone(_cual_buzon(), body.titulo, body.desde, body.minutos,
+                             body.con, body.donde)
+    except citas.NoSePuede as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@app.post("/api/agenda/confirmar")
+async def agenda_confirmar(body: Vale, authorization: str = Header(default="")):
+    """LO UNICO que crea la cita de verdad, y solo con un vale que salio de una propuesta tuya."""
+    _quien(authorization)
+    try:
+        return citas.confirma(body.vale)
+    except citas.NoSePuede as e:
+        raise HTTPException(410, str(e)) from e
+    except google.NoAutorizado as e:
+        raise HTTPException(503, str(e)) from e
 
 
 @app.get("/api/personal")

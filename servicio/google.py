@@ -298,3 +298,29 @@ def pide(negocio: str, url: str) -> dict:
     req = urllib.request.Request(url, headers={"Authorization": "Bearer " + _acceso(negocio)})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read() or "{}")
+
+
+def escribe(negocio: str, url: str, cuerpo: dict, metodo: str = "POST") -> dict:
+    """LA UNICA puerta por la que Zeno escribe en Google. Usarla es un acto deliberado.
+
+    Esta aparte de `pide` para que se vea de un vistazo quien escribe: hoy solo `citas.py`, y solo
+    detras de una confirmacion del operador. Un test fija esa lista, porque el dia que alguien la
+    llame desde otro sitio, lo que se escapa es un correo o una cita que otra persona ya ha visto.
+
+    Si falta el permiso, Google responde 403 y se traduce a algo que se entiende, en vez de dejar un
+    error crudo: la causa casi siempre es que el tramo de escritura no se ha abierto todavia.
+    """
+    datos = json.dumps(cuerpo).encode()
+    req = urllib.request.Request(
+        url, data=datos, method=metodo,
+        headers={"Authorization": "Bearer " + _acceso(negocio),
+                 "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read() or "{}")
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            raise NoAutorizado(
+                "Zeno todavia no tiene permiso para escribir en Google: hay que abrir el tramo "
+                "de calendario (ZENO_TRAMO=escribir) y volver a autorizar la cuenta") from e
+        raise
