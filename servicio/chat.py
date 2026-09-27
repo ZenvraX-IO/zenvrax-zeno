@@ -211,7 +211,7 @@ def responde(pregunta: str, pendientes: list, colas: list, fallos: list,
         "temperature": 0.2,          # respuestas con contexto: la tabla de la casa dice 0.2
         "system": SISTEMA,
         "messages": [{"role": "user",
-                      "content": f"{_contexto(pendientes, colas, fallos, documentos)}\n\n"
+                      "content": f"{_contexto(pendientes, colas, fallos, documentos, estado, ventas)}\n\n"
                                  f"PREGUNTA: {pregunta}"}],
     }).encode()
     req = urllib.request.Request(

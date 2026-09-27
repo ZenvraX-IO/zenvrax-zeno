@@ -265,3 +265,20 @@ def test_las_ventas_no_se_pasan_como_json_crudo():
     fuente = inspect.getsource(m._contexto)
     assert "_ventas(ventas)" in fuente
     assert "json.dumps(ventas" not in fuente, "las ventas vuelven a ir en crudo"
+
+
+def test_responde_le_pasa_de_verdad_el_estado_al_contexto():
+    """EL FALLO QUE HIZO FALTA TRES INTENTOS (2026-09-27).
+
+    `responde()` recibía `estado` y `ventas` y NO se los pasaba a `_contexto()`: el reemplazo de esa
+    línea nunca se aplicó y yo no lo comprobé. Los tests que tenía miraban que el endpoint pidiera
+    el estado y que `_contexto` supiera pintarlo, pero ninguno miraba el ÚNICO punto donde se unen
+    las dos mitades. Por eso pasaban con el fallo dentro.
+
+    Se ve preguntándole por la caja: el contexto la tiene y el chat decía que no.
+    """
+    import inspect
+    from servicio import chat as m
+    fuente = inspect.getsource(m.responde)
+    assert "_contexto(pendientes, colas, fallos, documentos, estado, ventas)" in fuente, (
+        "responde() recibe el estado y no se lo pasa al contexto: el chat se queda ciego")
