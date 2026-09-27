@@ -1046,6 +1046,15 @@ async function guardaBorrador() {
   try {
     const p = await api("/api/correo/borrador", { method: "POST", body: JSON.stringify({
       id: borradorVivo.id, texto }) });
+    // Se avisa y se pregunta, no se bloquea: alguna direccion asi sale de un buzon que si atiende
+    // gente. Lo que no puede pasar es guardar el borrador sin que nadie se entere de que va a un
+    // sitio donde no lo lee nadie.
+    if (p.nadie_lo_lee &&
+        !confirm("Ese correo viene de " + p.para + ", que parece una direccion automatica. " +
+                 "¿Guardo el borrador igual?")) {
+      b.disabled = false; b.textContent = "Guardar borrador";
+      return;
+    }
     const r = await api("/api/correo/borrador/confirmar", { method: "POST", body: JSON.stringify({
       vale: p.vale }) });
     borradorVivo = null;

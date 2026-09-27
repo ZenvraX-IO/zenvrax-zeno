@@ -66,6 +66,24 @@ def lee_entero(negocio: str, ident: str, tope: int = 4000) -> dict:
     }
 
 
+#: Direcciones que no leen a nadie. Se avisa, no se bloquea: alguna sale de un buzon que si
+#: atiende gente, y decidir por el operador que un correo no merece respuesta seria pasarse.
+_NADIE_LEE = ("noreply", "no-reply", "no_reply", "donotreply", "do-not-reply",
+              "mailer-daemon", "postmaster", "notifications@", "notification@",
+              "facebookmail.com", "bounce", "@e.linkedin.com")
+
+
+def contesta_alguien(direccion: str) -> bool:
+    """Si esa direccion parece leida por una persona.
+
+    Salio de la primera prueba real: el correo sin leer mas reciente era un aviso de Facebook, y
+    Zeno preparo tan campante una respuesta a `pageupdates@facebookmail.com`. El borrador estaba
+    perfecto y no servia para nada.
+    """
+    d = (direccion or "").lower()
+    return not any(x in d for x in _NADIE_LEE)
+
+
 def _direccion(de: str) -> str:
     """La direccion sola de un "Nombre <correo@sitio>"."""
     if "<" in de and ">" in de:
@@ -103,7 +121,8 @@ def prepara(negocio: str, ident: str, texto: str) -> dict:
     return {"vale": vale, "para": para, "asunto": asunto, "texto": texto.strip(),
             # Se dice con todas las letras, porque es justo lo que lo distingue de enviar.
             "solo_borrador": True,
-            "que_pasa": "Se guarda en tu Gmail como borrador. No se envia."}
+            "que_pasa": "Se guarda en tu Gmail como borrador. No se envia.",
+            "nadie_lo_lee": not contesta_alguien(para)}
 
 
 def guarda(vale: str) -> dict:

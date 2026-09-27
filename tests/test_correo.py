@@ -164,3 +164,34 @@ def test_el_cuerpo_leido_no_se_guarda_en_disco():
                   and isinstance(n.func, ast.Attribute)
                   and n.func.attr in ("write_text", "write_bytes", "dump", "execute")]
     assert not escrituras, [n.func.attr for n in escrituras]
+
+
+# ---------------------------------------------------------------- a quien no lee nadie
+
+def test_se_avisa_cuando_la_direccion_no_la_lee_nadie(monkeypatch):
+    """SALIO DE LA PRIMERA PRUEBA REAL. El correo sin leer mas reciente era un aviso de Facebook, y
+    Zeno preparo una respuesta a `pageupdates@facebookmail.com` tan tranquilo. El borrador estaba
+    impecable y no servia para nada.
+
+    Se AVISA, no se bloquea: alguna de esas direcciones sale de un buzon que si atiende gente, y
+    decidir por el operador que un correo no merece respuesta seria pasarse.
+    """
+    monkeypatch.setattr(correo, "lee_entero", lambda n, i, tope=4000: {
+        **ENTERO, "de": "Facebook <pageupdates@facebookmail.com>"})
+    p = correo.prepara("zenvrax", "m1", "Vale.")
+    assert p["nadie_lo_lee"] is True
+    assert p["vale"], "pero se puede preparar igual: es un aviso, no una prohibicion"
+
+
+def test_una_persona_de_verdad_no_lleva_el_aviso():
+    """Si saltara de mas, el aviso se leeria sin mirarlo y no diria nada."""
+    assert correo.prepara("zenvrax", "m1", "Vale.")["nadie_lo_lee"] is False
+
+
+def test_las_direcciones_que_no_leen_a_nadie():
+    for muerta in ("noreply@empresa.com", "no-reply@x.io", "NoReply@X.COM",
+                   "notifications@github.com", "pageupdates@facebookmail.com",
+                   "mailer-daemon@google.com"):
+        assert correo.contesta_alguien(muerta) is False, muerta
+    for viva in ("ana@cliente.com", "info@ecommheroacademy.com", "ghidalgo@gutlyn.com"):
+        assert correo.contesta_alguien(viva) is True, viva
