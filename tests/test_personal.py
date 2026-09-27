@@ -453,3 +453,28 @@ def test_un_tramo_desconocido_en_la_lista_no_abre_nada_de_mas(monkeypatch):
     p = google.permisos()
     assert google.PERMISO_AGENDA in p
     assert google.PERMISO_ENVIAR not in p and google.PERMISO_BORRADOR not in p
+
+
+def test_el_permiso_corto_y_el_largo_son_el_mismo(monkeypatch):
+    """PASO DE VERDAD al comprobarlo en produccion. Zeno pide `email` y Google concede
+    `.../userinfo.email`. Comparando las cadenas tal cual, `email` figuraba como que FALTABA para
+    siempre, asi que el aviso de "reconecta" se habria quedado puesto sin que reconectar lo quitara
+    nunca. Un aviso que no se puede apagar deja de mirarse, y con el se deja de mirar el que si
+    importaba.
+    """
+    monkeypatch.setenv("ZENO_TRAMO", "leer")
+    concedidos = ["https://www.googleapis.com/auth/gmail.readonly",
+                  "https://www.googleapis.com/auth/calendar.readonly",
+                  "https://www.googleapis.com/auth/userinfo.email", "openid"]
+    assert google.faltan(concedidos) == [], google.faltan(concedidos)
+
+
+def test_lo_que_falta_de_verdad_sigue_saliendo(monkeypatch):
+    """Y el arreglo no puede tragarse lo que si falta: entonces el aviso no serviria para nada."""
+    monkeypatch.setenv("ZENO_TRAMO", "agenda,borrador")
+    concedidos = ["https://www.googleapis.com/auth/gmail.readonly",
+                  "https://www.googleapis.com/auth/calendar.readonly",
+                  "https://www.googleapis.com/auth/userinfo.email", "openid"]
+    f = google.faltan(concedidos)
+    assert google.PERMISO_BORRADOR in f and google.PERMISO_AGENDA in f
+    assert "email" not in f

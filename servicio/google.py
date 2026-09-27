@@ -108,6 +108,29 @@ TRAMOS = {
 }
 
 
+#: Google CONCEDE los dos permisos de OpenID con su nombre largo, aunque se pidan con el corto.
+#: Comparar las cadenas tal cual decia que faltaban `email` y `profile` para siempre, y el aviso de
+#: "reconecta" se habria quedado puesto sin que reconectar lo quitara nunca: un aviso que no se
+#: puede apagar deja de mirarse, y con el se deja de mirar el que si importaba.
+_MISMO = {
+    "email": "https://www.googleapis.com/auth/userinfo.email",
+    "profile": "https://www.googleapis.com/auth/userinfo.profile",
+}
+
+
+def igual_que(permiso: str) -> set[str]:
+    """Todas las formas de nombrar ese permiso. Para comparar lo pedido con lo concedido."""
+    largo = _MISMO.get(permiso)
+    corto = next((k for k, v in _MISMO.items() if v == permiso), None)
+    return {permiso} | ({largo} if largo else set()) | ({corto} if corto else set())
+
+
+def faltan(concedidos: list[str]) -> list[str]:
+    """De lo que Zeno pide hoy, lo que esa cuenta NO ha concedido."""
+    dados = set(concedidos or [])
+    return [p for p in permisos() if not (igual_que(p) & dados)]
+
+
 def permisos() -> list[str]:
     """Los permisos que se piden hoy. `ZENO_TRAMO` admite VARIOS separados por coma.
 

@@ -517,9 +517,8 @@ async def google_cuentas(authorization: str = Header(default="")):
                         # dieron: cuando se abre un tramo nuevo, la cuenta sigue conectada con los
                         # permisos VIEJOS y la funcion nueva falla sin explicar por que. Decirlo
                         # aqui convierte "no funciona" en "reconecta y ya".
-                        "faltan": [x for x in google.permisos()
-                                   if x not in conectadas.get(negocio, {}).get("permisos", [])
-                                   and negocio in conectadas]})
+                        "faltan": (google.faltan(conectadas[negocio].get("permisos", []))
+                                   if negocio in conectadas else [])})
     # Los alias van APARTE de las cuentas. Mezclarlos era lo que ponia un boton Conectar donde no
     # hay nada que autorizar, y un aviso de "sin conectar" que decia que faltaba correo.
     alias = [{"negocio": n, "cuenta": c,

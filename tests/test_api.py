@@ -149,7 +149,7 @@ def test_ningun_endpoint_llama_al_catalogo_ni_dispara_una_accion():
                          "google.CUENTAS.get", "google.ALIAS.items",
                          # `permisos()` solo lee la configuracion: dice que se PIDE, no concede
                          # nada. Se usa para comparar con lo concedido y avisar de lo que falta.
-                         "google.permisos"}, (
+                         "google.permisos", "google.faltan"}, (
         f"api.py expone de google algo no previsto: {de_google}")
 
 
