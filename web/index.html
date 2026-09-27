@@ -896,22 +896,33 @@ async function conectaCuenta(negocio, boton) {
 }
 
 function pintaCuentas(cuentas, alias) {
-  // CUANDO TODO ESTA CONECTADO, ESTO NO OCUPA SITIO. Antes eran tres filas grandes en lo alto de la
-  // pantalla, y decian algo que solo importa el primer dia; los alias ademas parecian cuentas. El
-  // operador (2026-09-27): *"¿por que colocar las cuentas si solo se conecta una?"*.
-  //
-  // Lo que queda es una linea discreta al final, con el correo y como quitarlo. Si algo falta, en
-  // cambio, vuelve la tarjeta entera: eso si hay que verlo.
-  const falta = cuentas.filter(c => !c.conectada);
-  if (!falta.length) return "";
+  // Con todo en orden esto no ocupa sitio: queda una linea discreta al final. Pero hay DOS casos en
+  // los que la tarjeta vuelve entera, porque son cosas que hay que ver:
+  //   · La cuenta no esta conectada.
+  //   · Esta conectada pero le FALTAN permisos, porque se abrio un tramo nuevo despues. Sin esto,
+  //     la funcion nueva falla y no hay forma de saber que lo que toca es reconectar: el boton de
+  //     quitar estaba escondido en una linea pequeña al final de la pantalla.
+  const ojo = cuentas.filter(c => !c.conectada || (c.faltan || []).length);
+  if (!ojo.length) return "";
+
+  const NOMBRES = {
+    "https://www.googleapis.com/auth/gmail.compose": "dejar borradores",
+    "https://www.googleapis.com/auth/calendar.events": "crear y mover citas",
+    "https://www.googleapis.com/auth/gmail.readonly": "leer el correo",
+    "https://www.googleapis.com/auth/calendar.readonly": "ver la agenda",
+  };
 
   let h = "";
-  for (const c of falta) {
-    h += '<div class="cuenta"><span class="punto"></span>' +
-         '<div class="c"><b>' + esc(c.cuenta) + "</b><span>" +
-         (c.configurada ? "sin conectar" : "falta configurarla") + "</span></div>";
+  for (const c of ojo) {
+    const faltan = c.faltan || [];
+    const estado = !c.conectada
+      ? (c.configurada ? "sin conectar" : "falta configurarla")
+      : "le falta un permiso: " + faltan.map(x => NOMBRES[x] || x).join(", ");
+    h += '<div class="cuenta"><span class="punto' + (c.conectada ? " si" : "") + '"></span>' +
+         '<div class="c"><b>' + esc(c.cuenta) + "</b><span>" + esc(estado) + "</span></div>";
     if (c.configurada)
-      h += '<button class="b primaria" data-conectar="' + esc(c.negocio) + '">Conectar</button>';
+      h += '<button class="b primaria" data-conectar="' + esc(c.negocio) + '">' +
+           (c.conectada ? "Reconectar" : "Conectar") + "</button>";
     h += "</div>";
   }
   return h;

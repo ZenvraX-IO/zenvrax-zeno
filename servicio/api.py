@@ -512,7 +512,14 @@ async def google_cuentas(authorization: str = Header(default="")):
                         # Sin cliente configurado el botón no puede funcionar: se dice, en vez de
                         # dejar que el operador pulse y se coma un error de Google.
                         "configurada": bool(ident),
-                        "permisos": conectadas.get(negocio, {}).get("permisos", [])})
+                        "permisos": conectadas.get(negocio, {}).get("permisos", []),
+                        # LO QUE FALTA POR CONCEDER. Zeno sabe que permisos pidio y cuales le
+                        # dieron: cuando se abre un tramo nuevo, la cuenta sigue conectada con los
+                        # permisos VIEJOS y la funcion nueva falla sin explicar por que. Decirlo
+                        # aqui convierte "no funciona" en "reconecta y ya".
+                        "faltan": [x for x in google.permisos()
+                                   if x not in conectadas.get(negocio, {}).get("permisos", [])
+                                   and negocio in conectadas]})
     # Los alias van APARTE de las cuentas. Mezclarlos era lo que ponia un boton Conectar donde no
     # hay nada que autorizar, y un aviso de "sin conectar" que decia que faltaba correo.
     alias = [{"negocio": n, "cuenta": c,

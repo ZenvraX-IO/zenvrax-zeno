@@ -669,3 +669,41 @@ def test_ningun_endpoint_usa_un_modelo_declarado_mas_abajo():
             if nombre in linea_de and linea_de[nombre] > f.lineno:
                 tarde.append(f"{f.name}() usa {nombre}, declarado en la linea {linea_de[nombre]}")
     assert not tarde, tarde
+
+
+def test_se_dice_que_permiso_le_falta_a_una_cuenta_conectada(monkeypatch):
+    """PASO DE VERDAD hoy. Se abrio el tramo de borradores, la cuenta seguia conectada con los
+    permisos VIEJOS, y la funcion nueva habria fallado sin explicar por que. Encima el boton de
+    reconectar estaba escondido en una linea pequeña al final de la pantalla, asi que no habia
+    forma de arreglarlo desde la aplicacion.
+
+    Zeno sabe que permisos pidio y cuales le dieron: no decirlo era guardarse el dato que convierte
+    "no funciona" en "reconecta y ya".
+    """
+    monkeypatch.setenv("ZENO_TRAMO", "agenda,borrador")
+    monkeypatch.setattr(api_mod.google, "conectadas", lambda: {"zenvrax": {
+        "cuenta": "yo@zenvrax.com", "buzon": "yo@zenvrax.com",
+        "permisos": ["https://www.googleapis.com/auth/gmail.readonly",
+                     "https://www.googleapis.com/auth/calendar.readonly",
+                     "https://www.googleapis.com/auth/calendar.events", "openid", "email"]}})
+    c = cliente.get("/api/google/cuentas", headers=CABECERA).json()["cuentas"][0]
+    assert c["conectada"] is True
+    assert c["faltan"] == [api_mod.google.PERMISO_BORRADOR]
+
+
+def test_una_cuenta_al_dia_no_tiene_nada_que_reconectar(monkeypatch):
+    """Y al reves: si avisara siempre, el aviso seria ruido y se dejaria de mirar."""
+    monkeypatch.setenv("ZENO_TRAMO", "leer")
+    monkeypatch.setattr(api_mod.google, "conectadas", lambda: {"zenvrax": {
+        "cuenta": "yo@zenvrax.com", "permisos": list(api_mod.google.PERMISOS_LEER)}})
+    c = cliente.get("/api/google/cuentas", headers=CABECERA).json()["cuentas"][0]
+    assert c["faltan"] == []
+
+
+def test_una_cuenta_sin_conectar_no_sale_como_falta_de_permisos(monkeypatch):
+    """Son dos cosas distintas y se arreglan igual, pero el mensaje no puede confundirlas: "sin
+    conectar" y "le falta un permiso" llevan a mirar sitios diferentes."""
+    monkeypatch.setenv("ZENO_TRAMO", "agenda,borrador")
+    monkeypatch.setattr(api_mod.google, "conectadas", lambda: {})
+    c = cliente.get("/api/google/cuentas", headers=CABECERA).json()["cuentas"][0]
+    assert c["conectada"] is False and c["faltan"] == []
