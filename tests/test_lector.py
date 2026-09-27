@@ -12,6 +12,7 @@ pendiente" cuando la verdad es "hay una que he podido ver". Con eso se toman dec
 Puros: sin red. Las respuestas de las dos APIs se sustituyen por datos de mentira.
 """
 import ast
+import json
 import sys
 from pathlib import Path
 
@@ -195,3 +196,31 @@ def test_los_kpi_de_zenvrax_se_pasan_tal_cual(monkeypatch):
         {"id": "gutlyn", "nombre": "GutLyn+", "kpis": []}]}})
     z = [b for b in lector.negocios()[0] if b["id"] == "zenvrax"][0]
     assert z["kpis"] == [{"k": "Runway", "v": "11 meses", "alerta": "warn", "to": "/finanzas/pnl"}]
+
+
+def test_el_hecho_hoy_del_cockpit_no_se_enseña_como_trabajo(monkeypatch):
+    """MEDIDO EL 2026-09-27: `done_today` trae 13 entradas y son accesos a la aplicacion (logins,
+    segundos factores), no trabajo terminado. Enseñarlo como "lo hecho hoy" diria 13 cosas hechas
+    cuando no se ha hecho ninguna, que es peor que no decir nada."""
+    monkeypatch.setattr(lector, "_seguro", lambda b, r, c=None: ({
+        "focus": {"title": "Una cosa"}, "plan": [], "counts": {},
+        "done_today": [{"action": "login_2fa_success"}] * 13}, None))
+    plan, _ = lector.plan_del_dia()
+    assert "done_today" not in plan and "hecho" not in json.dumps(plan)
+
+
+def test_solo_salen_los_avisos_que_no_estan_bien(monkeypatch):
+    """Ocho semaforos en verde no son informacion, son ruido que entrena a no mirar. De los ocho de
+    Xrise medidos hoy, solo uno esta en ambar."""
+    def falso(base, ruta, cab=None):
+        if "overview" in ruta:
+            return {"agenda": [{"negocio": "Zenvrax IO", "texto": "Runway: 11 meses", "sev": "warn"},
+                               {"negocio": "Zenvrax IO", "texto": "Todo bien", "sev": "ok"}]}, None
+        return {"alerts": [{"label": "Signups sin contactar", "value": 57, "tone": "warn"},
+                           {"label": "SKUs en rotura", "value": 0, "tone": "ok"},
+                           {"label": "Pedidos abiertos", "value": 0, "tone": "ok"}]}, None
+    monkeypatch.setattr(lector, "_seguro", falso)
+    avisos, _ = lector.alertas()
+    assert len(avisos) == 2, [a["texto"] for a in avisos]
+    assert any("57" in a["texto"] for a in avisos)
+    assert not any("rotura" in a["texto"] for a in avisos)

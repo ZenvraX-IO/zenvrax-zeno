@@ -166,6 +166,77 @@ async def pendientes(authorization: str = Header(default="")):
     }
 
 
+# ---------------------------------------------------------------- lo primero de la mañana
+
+def _contexto_de_hoy(plan, avisos, negocios, personales):
+    """Todo lo que Zeno sabe hoy, en texto, para que las tres lineas se escriban con criterio.
+
+    La PANTALLA enseña poco (el foco y lo urgente, que es lo que se pidio), pero el resumen se
+    escribe viendo todo: decidir bien necesita ver todo, enseñar bien necesita ver poco.
+    """
+    t = []
+    if plan.get("foco"):
+        t.append("LO PRIMERO SEGUN EL COCKPIT: " + plan["foco"]["titulo"])
+    salto = chr(10)
+    if plan.get("urgentes"):
+        t.append("URGENTE:" + salto
+                 + salto.join("  - " + u["titulo"] for u in plan["urgentes"]))
+    if plan.get("resto"):
+        t.append("TAMBIEN EN EL PLAN:" + salto
+                 + salto.join("  - " + u["titulo"] for u in plan["resto"]))
+    if avisos:
+        t.append("SE HA SALIDO DE SITIO:" + salto + salto.join(
+            f"  - [{a['negocio']}] {a['texto']}" for a in avisos))
+    for n in negocios:
+        cifras = ", ".join(f"{k['k']} {k['v']}" for k in (n.get("kpis") or []))
+        t.append(f"{n['nombre']}: {cifras or 'sin cifras'}. Espera tu OK: {n.get('pendiente', 0)}")
+    if personales:
+        t.append(personales)
+    return (salto * 2).join(t) or "(hoy no hay datos: dilo)"
+
+
+@app.get("/api/hoy")
+async def api_hoy(narrar: bool = Query(default=True), authorization: str = Header(default="")):
+    """Lo primero de la mañana: el foco, lo urgente, y tres lineas sobre que significa.
+
+    Los DATOS no cuestan nada y van siempre. Las tres lineas cuestan una llamada a Haiku y se
+    cachean POR DIA: abrir la aplicacion diez veces por la mañana no puede costar diez llamadas.
+    Si el resumen falla, la pantalla sale igual con sus datos: el texto es el adorno, no la pieza.
+    """
+    _quien(authorization)
+    plan, f1 = lector.plan_del_dia()
+    avisos, f2 = lector.alertas()
+    negocios, f3 = lector.negocios()
+    fallos = f1 + f2 + f3
+
+    # Lo personal entra en el contexto del resumen aunque no se pinte aqui: una cita a las 10 cambia
+    # que es lo primero del dia, y sin saberlo el resumen propone algo imposible.
+    personales = ""
+    try:
+        datos, fp = personal.bandeja()
+        hoy = [c for c in datos["agenda"]][:4]
+        salto = chr(10)
+        if hoy:
+            personales = "TU AGENDA:" + salto + salto.join(
+                f"  - {c['cuando'][:16]} {c['titulo']}" for c in hoy)
+        if datos["correos"]:
+            personales += salto + f"Correo sin leer: {len(datos['correos'])}"
+        fallos += fp
+    except Exception as e:                                # noqa: BLE001
+        fallos.append(f"tu agenda: {type(e).__name__}")
+
+    fuera = {"plan": plan, "avisos": avisos, "fallos": fallos, "resumen": None}
+    if narrar and CHAT_ACTIVO:
+        try:
+            fuera["resumen"] = chat_mod.resumen_de_la_manana(
+                _contexto_de_hoy(plan, avisos, negocios, personales))
+        except (chat_mod.TopeAlcanzado, chat_mod.SinClaveDeIA) as e:
+            fuera["fallos"].append(str(e))
+        except Exception as e:                            # noqa: BLE001
+            fuera["fallos"].append(f"el resumen escrito: {type(e).__name__}")
+    return fuera
+
+
 # ---------------------------------------------------------------- los dos negocios
 
 @app.get("/api/negocios")

@@ -333,3 +333,74 @@ def negocios() -> tuple[list[dict], list[str]]:
         b["fallos"] = [f for f in fallos if b["id"] in f.lower() or b["nombre"].lower() in f.lower()]
     sueltos = [f for f in fallos if not any(f in b["fallos"] for b in fuera)]
     return fuera, sueltos
+
+
+# ---------------------------------------------------------------- lo primero de la mañana
+
+def plan_del_dia() -> tuple[dict, list[str]]:
+    """Lo que hay que hacer hoy: el foco, lo urgente y cuanto queda.
+
+    Sale del `/autopilot/plan` del cockpit, que YA decide que es lo primero y que es urgente. Zeno
+    no reordena ni reinventa esa prioridad: si la calculara aqui a su manera, habria dos criterios
+    distintos para lo mismo y el operador no sabria cual esta mirando.
+
+    Lo que NO se trae, y se dice para que no se busque: el `done_today` del cockpit son entradas de
+    acceso a la aplicacion (logins, segundos factores), no trabajo terminado. Enseñarlo como "lo
+    hecho hoy" seria contar 13 cosas hechas cuando no se ha hecho ninguna.
+    """
+    datos, err = _seguro(COCKPIT, "/autopilot/plan")
+    if err:
+        return {}, [f"el plan del dia: {err}"]
+
+    def limpia(t):
+        """Los titulos vienen con un emoji delante y un guion separando el tipo del nombre."""
+        t = str(t or "").strip()
+        return t
+
+    plan = datos.get("plan") or []
+    urgentes = [p for p in plan if p.get("severity") == "urgent"]
+    cuentas = datos.get("counts") or {}
+    foco = datos.get("focus") or {}
+    return {
+        "foco": {"titulo": limpia(foco.get("title")), "tipo": foco.get("kind"),
+                 "severidad": foco.get("severity"), "url": foco.get("url"),
+                 "cuerpo": (foco.get("body") or "")[:300]} if foco.get("title") else None,
+        "urgentes": [{"titulo": limpia(p.get("title")), "tipo": p.get("kind"),
+                      "url": p.get("url")} for p in urgentes],
+        # El resto del plan viaja para que el resumen escrito lo tenga en cuenta, aunque la pantalla
+        # solo enseñe lo urgente: decidir bien necesita ver todo, enseñar bien necesita ver poco.
+        "resto": [{"titulo": limpia(p.get("title")), "tipo": p.get("kind"),
+                   "severidad": p.get("severity"), "url": p.get("url")}
+                  for p in plan if p.get("severity") != "urgent"],
+        "cuantas_pendientes": cuentas.get("pending"),
+        "cuantas_urgentes": cuentas.get("urgent", len(urgentes)),
+    }, []
+
+
+def alertas() -> tuple[list[dict], list[str]]:
+    """Lo que esta en ambar o rojo en los dos sistemas, ya junto.
+
+    Solo lo que NO esta bien: una lista de ocho semaforos en verde no es informacion, es ruido que
+    entrena a no mirar. Hoy sale una sola cosa de Xrise, los signups de waitlist sin contactar, y
+    eso es exactamente lo que se quiere ver.
+    """
+    fuera, fallos = [], []
+    est, f1 = _seguro(COCKPIT, "/aios/overview")
+    if f1:
+        fallos.append(f"los avisos de Zenvrax: {f1}")
+    else:
+        for a in (est.get("agenda") or []):
+            if a.get("sev") in ("warn", "bad"):
+                fuera.append({"negocio": a.get("negocio") or "Zenvrax IO",
+                              "texto": a.get("texto"), "grave": a.get("sev") == "bad",
+                              "donde": a.get("to")})
+    xr, f2 = _seguro(XRISE, "/dashboard/executive", {"X-Zeno-Org": ORG})
+    if f2:
+        fallos.append(f"los avisos de GutLyn: {f2}")
+    else:
+        for a in (xr.get("alerts") or []):
+            if a.get("tone") in ("warn", "bad"):
+                fuera.append({"negocio": "GutLyn+",
+                              "texto": f"{a.get('label')}: {a.get('value')}",
+                              "grave": a.get("tone") == "bad", "donde": a.get("link")})
+    return fuera, fallos

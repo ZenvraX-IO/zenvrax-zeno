@@ -233,3 +233,61 @@ def responde(pregunta: str, pendientes: list, colas: list, fallos: list,
         "preguntas_hoy": _gastado[_hoy()],
         "tope_diario": TOPE_DIARIO,
     }
+
+
+# ---------------------------------------------------------------- las tres lineas de la mañana
+
+SISTEMA_MANANA = (
+    "Eres Zeno, el asistente del operador de dos negocios: Zenvrax IO (consultoria de automatizacion)"
+    " y GutLyn+ (ecommerce de suplementos). Escribes lo PRIMERO que lee por la mañana.\n\n"
+    "Tres frases como mucho, y cada una tiene que ganarse el sitio:\n"
+    "  1. Que es lo que de verdad importa hoy y por que.\n"
+    "  2. Que harias tu primero, concreto, con el nombre de la cosa.\n"
+    "  3. Solo si hay algo que se ha salido de sitio y no puede esperar. Si no lo hay, dos frases.\n\n"
+    "Reglas duras:\n"
+    "  · Nada de saludos, ni de resumir la lista que ya tiene delante en la pantalla.\n"
+    "  · Las cifras se escriben tal cual vienen. Un cero es un cero, no es falta de dato.\n"
+    "  · Si un sistema no ha contestado, se dice en una frase corta y no se rellena el hueco.\n"
+    "  · Ni asteriscos ni rayas largas. Texto llano.\n"
+    "  · Hablale de tu."
+)
+
+#: El resumen se calcula UNA vez al dia y se guarda. Abrir la aplicacion diez veces no puede costar
+#: diez llamadas: el operador la abre desde el movil varias veces cada mañana, y eso multiplicaria
+#: el gasto por nada, porque el contenido apenas cambia en una hora.
+_RESUMEN: dict[str, dict] = {}
+
+
+def resumen_de_la_manana(contexto: str, rehacer: bool = False) -> dict:
+    """Tres lineas sobre el dia. Cacheadas por dia; `rehacer` fuerza una nueva."""
+    hoy = _hoy()
+    if not rehacer and hoy in _RESUMEN:
+        return {**_RESUMEN[hoy], "de_cache": True}
+    if not CLAVE_ANTHROPIC:
+        raise SinClaveDeIA("no hay clave de Anthropic configurada")
+    hechas = preguntas_hoy()
+    if hechas >= TOPE_DIARIO:
+        raise TopeAlcanzado(f"{hechas} preguntas hoy, el tope son {TOPE_DIARIO}")
+
+    cuerpo = json.dumps({
+        "model": MODELO,
+        "max_tokens": 300,
+        "temperature": 0.2,
+        "system": SISTEMA_MANANA,
+        "messages": [{"role": "user", "content": contexto}],
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=cuerpo, method="POST",
+        headers={"content-type": "application/json", "x-api-key": CLAVE_ANTHROPIC,
+                 "anthropic-version": "2023-06-01"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        datos = json.loads(r.read())
+
+    _gastado[hoy] = hechas + 1
+    uso = datos.get("usage") or {}
+    coste = (uso.get("input_tokens", 0) / 1e6 * PRECIO_ENTRADA
+             + uso.get("output_tokens", 0) / 1e6 * PRECIO_SALIDA)
+    texto = "".join(b.get("text", "") for b in datos.get("content", []) if b.get("type") == "text")
+    _RESUMEN.clear()                      # solo se guarda el de hoy: el de ayer no sirve para nada
+    _RESUMEN[hoy] = {"texto": _limpia(texto), "coste_usd": round(coste, 6), "modelo": MODELO}
+    return {**_RESUMEN[hoy], "de_cache": False}

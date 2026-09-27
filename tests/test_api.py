@@ -466,3 +466,85 @@ def test_la_agenda_necesita_una_cuenta_conectada(monkeypatch):
     """Sin cuenta, proponer huecos seria inventarselos."""
     monkeypatch.setattr(api_mod.google, "conectadas", lambda: {})
     assert cliente.get("/api/agenda/huecos", headers=CABECERA).status_code == 503
+
+
+# ---------------------------------------------------------------- lo primero de la mañana
+
+def _hoy_sin_ia(monkeypatch, plan=None, avisos=None):
+    monkeypatch.setattr(lector, "plan_del_dia", lambda: (plan or {}, []))
+    monkeypatch.setattr(lector, "alertas", lambda: (avisos or [], []))
+    monkeypatch.setattr(lector, "negocios", lambda: ([], []))
+    monkeypatch.setattr(api_mod.personal, "bandeja",
+                        lambda: ({"correos": [], "agenda": [], "cuentas": {}}, []))
+
+
+def test_la_pantalla_de_hoy_sale_aunque_el_resumen_falle(monkeypatch):
+    """EL TEST QUE IMPORTA de esta pantalla. El texto escrito es el adorno; el foco y lo urgente son
+    la pieza. Si una caida de la API de Anthropic dejara la pantalla en blanco, lo primero que ve el
+    operador por la mañana dependeria de un servicio de fuera."""
+    _hoy_sin_ia(monkeypatch, plan={"foco": {"titulo": "Responder a Era Emre"},
+                                   "urgentes": [{"titulo": "Landing de XSupport"}]})
+    monkeypatch.setattr(api_mod, "CHAT_ACTIVO", True)
+    def revienta(_c):
+        raise RuntimeError("la API no contesta")
+    monkeypatch.setattr(api_mod.chat_mod, "resumen_de_la_manana", revienta)
+    d = cliente.get("/api/hoy", headers=CABECERA).json()
+    assert d["plan"]["foco"]["titulo"] == "Responder a Era Emre"
+    assert d["resumen"] is None
+    assert any("resumen" in f for f in d["fallos"]), "y se dice que falta, no se calla"
+
+
+def test_sin_el_chat_encendido_la_pantalla_no_gasta_nada(monkeypatch):
+    """El resumen cuesta dinero. Con el chat apagado no puede colarse por otra puerta."""
+    _hoy_sin_ia(monkeypatch, plan={"foco": None, "urgentes": []})
+    monkeypatch.setattr(api_mod, "CHAT_ACTIVO", False)
+    monkeypatch.setattr(api_mod.chat_mod, "resumen_de_la_manana",
+                        lambda *a, **k: pytest.fail("ha gastado API con el chat apagado"))
+    assert cliente.get("/api/hoy", headers=CABECERA).json()["resumen"] is None
+
+
+def test_se_puede_pedir_la_pantalla_sin_narrar(monkeypatch):
+    """Para recargar tirando del dedo sin volver a pagar."""
+    _hoy_sin_ia(monkeypatch)
+    monkeypatch.setattr(api_mod, "CHAT_ACTIVO", True)
+    monkeypatch.setattr(api_mod.chat_mod, "resumen_de_la_manana",
+                        lambda *a, **k: pytest.fail("ha narrado con narrar=false"))
+    assert cliente.get("/api/hoy?narrar=false", headers=CABECERA).json()["resumen"] is None
+
+
+def test_el_resumen_ve_mas_de_lo_que_enseña_la_pantalla(monkeypatch):
+    """La pantalla enseña el foco y lo urgente, que es lo que se pidio. Pero decidir bien necesita
+    ver todo: una cita a las 10 cambia cual es lo primero del dia, y sin saberlo el resumen propone
+    algo imposible."""
+    monkeypatch.setattr(lector, "plan_del_dia", lambda: (
+        {"foco": {"titulo": "Un DM"}, "urgentes": [{"titulo": "Una landing"}],
+         "resto": [{"titulo": "Algo menor"}]}, []))
+    monkeypatch.setattr(lector, "alertas",
+                        lambda: ([{"negocio": "GutLyn+", "texto": "57 signups sin contactar"}], []))
+    monkeypatch.setattr(lector, "negocios", lambda: (
+        [{"nombre": "Zenvrax IO", "kpis": [{"k": "Caja", "v": "$1.150"}], "pendiente": 82}], []))
+    monkeypatch.setattr(api_mod.personal, "bandeja", lambda: (
+        {"correos": [{"asunto": "x"}], "agenda": [{"cuando": "2026-10-08T10:00", "titulo": "Con JS"}],
+         "cuentas": {}}, []))
+    monkeypatch.setattr(api_mod, "CHAT_ACTIVO", True)
+    visto = {}
+    monkeypatch.setattr(api_mod.chat_mod, "resumen_de_la_manana",
+                        lambda c, **k: visto.update(c=c) or {"texto": "ok"})
+    cliente.get("/api/hoy", headers=CABECERA)
+    for tiene_que_estar in ("Un DM", "Una landing", "Algo menor", "57 signups", "Caja", "Con JS",
+                            "Correo sin leer"):
+        assert tiene_que_estar in visto["c"], f"al resumen le falta {tiene_que_estar}"
+
+
+def test_una_fuente_caida_no_vacia_la_pantalla(monkeypatch):
+    """Si el cockpit no contesta, lo que falta es el plan, no el dia entero."""
+    monkeypatch.setattr(lector, "plan_del_dia", lambda: ({}, ["el plan del dia: HTTP 502"]))
+    monkeypatch.setattr(lector, "alertas",
+                        lambda: ([{"negocio": "GutLyn+", "texto": "57 signups"}], []))
+    monkeypatch.setattr(lector, "negocios", lambda: ([], []))
+    monkeypatch.setattr(api_mod.personal, "bandeja",
+                        lambda: ({"correos": [], "agenda": [], "cuentas": {}}, []))
+    monkeypatch.setattr(api_mod, "CHAT_ACTIVO", False)
+    d = cliente.get("/api/hoy", headers=CABECERA).json()
+    assert d["avisos"], "lo que si se pudo leer sigue saliendo"
+    assert any("502" in f for f in d["fallos"])
