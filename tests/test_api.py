@@ -71,7 +71,7 @@ def test_no_hay_ningun_endpoint_que_ejecute_una_accion():
 def test_el_chat_nace_apagado_porque_gasta_dinero():
     """Medido: ~$0,006 por pregunta. Encenderlo por defecto sería gastar sin haberlo puesto delante
     del operador, que es justo lo que su regla prohíbe."""
-    r = cliente.post("/api/chat", headers=CABECERA)
+    r = cliente.post("/api/chat", headers=CABECERA, json={"texto": "hola"})
     assert r.status_code == 501
     assert "tu OK" in r.json()["detail"], "el mensaje tiene que decir POR QUÉ está apagado"
     assert api_mod.CHAT_ACTIVO is False, "de serie, apagado"
@@ -144,3 +144,38 @@ def test_la_salud_no_pide_sesion():
     rojo y el arranque no se daría nunca por bueno."""
     r = cliente.get("/api/salud")
     assert r.status_code == 200 and r.json()["ok"] is True
+
+
+# ---------------------------------------------------------------- el chat, con Haiku y con tope
+
+def test_el_chat_usa_haiku_y_no_sonnet():
+    """El operador: *"el modelo debería ser haiku"*. Medido sobre 30 días reales del ecosistema,
+    Haiku sale a $0,0017 por llamada y Sonnet a $0,0079: 4,5 veces más caro para contestar sobre un
+    contexto que Zeno ya tiene delante. La voz la pone el prompt, no el modelo."""
+    from servicio import chat as chat_mod
+    assert "haiku" in chat_mod.MODELO.lower(), (
+        f"el chat usa {chat_mod.MODELO}: encarece cada pregunta sin mejorar la respuesta")
+
+
+def test_el_chat_tiene_tope_diario():
+    """Es la única pieza de Zeno cuyo coste lo decide el uso y no el sistema. Sin tope, una tarde de
+    curiosidad se convierte en una factura que nadie vio venir."""
+    from servicio import chat as chat_mod
+    assert 0 < chat_mod.TOPE_DIARIO <= 200, f"tope raro: {chat_mod.TOPE_DIARIO}"
+
+
+def test_cada_respuesta_dice_lo_que_ha_costado(monkeypatch):
+    """Sin la cifra en pantalla, el gasto solo se ve en la factura de fin de mes."""
+    from servicio import chat as chat_mod
+    import inspect
+    fuente = inspect.getsource(chat_mod.responde)
+    for campo in ("coste_usd", "preguntas_hoy", "tope_diario", "modelo"):
+        assert campo in fuente, f"la respuesta del chat no dice {campo}"
+
+
+def test_el_chat_no_promete_ejecutar():
+    """Zeno todavía no ejecuta: eso es J4. Si el prompt no se lo prohíbe, el modelo dirá que sí
+    puede, y el operador se quedará esperando algo que no va a pasar."""
+    from servicio import chat as chat_mod
+    assert "no puedes" in chat_mod.SISTEMA or "todavía no puedes" in chat_mod.SISTEMA
+    assert "Inventar" in chat_mod.SISTEMA, "el prompt tiene que prohibir inventar cifras"

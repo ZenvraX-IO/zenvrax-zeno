@@ -1,0 +1,131 @@
+# -*- coding: utf-8 -*-
+"""El chat de Zeno. Con Haiku, con tope diario y contando cada céntimo.
+
+EL MODELO ES HAIKU, y no por ahorrar sin más. El operador: *"tampoco creo que deba tener ese coste
+puesto el modelo debería ser haiku"*. Medido sobre 30 días reales del ecosistema:
+
+    claude-haiku-4-5      10.251 llamadas   $0,0017 de media
+    claude-sonnet-4-6        716 llamadas   $0,0079 de media
+
+O sea Haiku es **4,5 veces más barato**, y esto no es razonamiento complejo: es contestar sobre un
+contexto que Zeno ya tiene delante. La regla de la casa lo dice desde agosto, y encaja: la voz y el
+criterio los pone el PROMPT, no el modelo.
+
+EL CONTEXTO VA PRECARGADO, no se le dan herramientas. Zeno ya sabe lo que hay pendiente, cuánto
+queda en cada cola y qué dice el corpus: se le pasa todo eso en el mensaje y contesta. Darle
+herramientas multiplicaría las llamadas por pregunta, que es justo lo que encarece un chat.
+
+EL TOPE DIARIO NO ES DECORATIVO. Un chat es la única pieza de Zeno cuyo coste lo decide el uso, no
+el sistema. Sin tope, una tarde de curiosidad se convierte en una factura que nadie vio venir, que
+es exactamente lo que ya pasó en este ecosistema en agosto.
+"""
+from __future__ import annotations
+
+import json
+import os
+import urllib.error
+import urllib.request
+from datetime import date
+
+MODELO = os.environ.get("ZENO_MODELO", "claude-haiku-4-5")
+CLAVE_ANTHROPIC = os.environ.get("ANTHROPIC_API_KEY", "")
+#: Tope de preguntas al día. A $0,0017 la pregunta, 60 son unos 10 céntimos: suficiente para un día
+#: de uso intenso y un techo que no asusta. Se cuenta en memoria: si el contenedor se reinicia se
+#: pone a cero, y eso es aceptable para un tope que protege de un despiste, no de un ataque.
+TOPE_DIARIO = int(os.environ.get("ZENO_TOPE_PREGUNTAS", "60"))
+
+#: Precio por millón de tokens de Haiku 4.5, para poder decir lo que cuesta cada respuesta.
+PRECIO_ENTRADA, PRECIO_SALIDA = 1.00, 5.00
+
+_gastado: dict[str, int] = {}
+
+
+class SinClaveDeIA(RuntimeError):
+    """No hay clave de Anthropic. Se dice en vez de contestar vacío."""
+
+
+class TopeAlcanzado(RuntimeError):
+    """Se han hecho las preguntas del día. Dice cuántas van y cuál es el tope."""
+
+
+SISTEMA = """Eres Zeno, el asistente del operador de Zenvrax IO.
+
+Contestas sobre DOS negocios que están separados y no se mezclan:
+  - Zenvrax IO: la consultoría de automatización.
+  - GutLyn+ (marca HAAZON): el ecommerce, que se gestiona desde Xrise.
+
+REGLAS, y son duras:
+  - Responde SOLO con los datos del contexto. Si algo no está, di que no lo sabes y dónde mirarlo.
+    Inventar una cifra de negocio es peor que no contestar.
+  - Si el contexto avisa de que una fuente no respondió, DILO antes de dar números: una lista corta
+    sin aviso se lee como "hay poco".
+  - Lo que publica hacia fuera (LinkedIn, X, Meta, correo) es irreversible. Nómbralo como tal.
+  - Nunca propongas ejecutar una acción tú mismo: todavía no puedes. Di dónde está el botón.
+  - En español, directo, sin rodeos ni disculpas. Frases cortas. Sin asteriscos y sin raya larga.
+"""
+
+
+def _hoy() -> str:
+    return date.today().isoformat()
+
+
+def preguntas_hoy() -> int:
+    return _gastado.get(_hoy(), 0)
+
+
+def _contexto(pendientes: list, colas: list, fallos: list, documentos: list) -> str:
+    partes = []
+    if fallos:
+        partes.append("FUENTES QUE NO HAN RESPONDIDO (dilo si das numeros): " + " · ".join(fallos))
+    if colas:
+        partes.append("TODO LO PENDIENTE:\n" + "\n".join(
+            f"  {c['cuantos']} · {c['titulo']} ({c['negocio']})" for c in colas))
+    if pendientes:
+        partes.append("LO QUE TOCA AHORA:\n" + "\n".join(
+            f"  [{p.negocio}] {p.titulo}" +
+            ("  (aprobarlo PUBLICA y no se deshace)" if p.publica_algo else "")
+            for p in pendientes[:8]))
+    if documentos:
+        partes.append("DE LA DOCUMENTACION:\n" + "\n".join(
+            f"  {d.get('title') or d.get('doc')}: {(d.get('sub') or '')[:180]}"
+            for d in documentos[:4]))
+    return "\n\n".join(partes) or "(sin datos: dilo)"
+
+
+def responde(pregunta: str, pendientes: list, colas: list, fallos: list,
+             documentos: list) -> dict:
+    """Una respuesta y lo que ha costado. Lanza si falta la clave o se alcanzó el tope."""
+    if not CLAVE_ANTHROPIC:
+        raise SinClaveDeIA("no hay clave de Anthropic configurada")
+    hechas = preguntas_hoy()
+    if hechas >= TOPE_DIARIO:
+        raise TopeAlcanzado(f"{hechas} preguntas hoy, el tope son {TOPE_DIARIO}")
+
+    cuerpo = json.dumps({
+        "model": MODELO,
+        "max_tokens": 700,
+        "temperature": 0.2,          # respuestas con contexto: la tabla de la casa dice 0.2
+        "system": SISTEMA,
+        "messages": [{"role": "user",
+                      "content": f"{_contexto(pendientes, colas, fallos, documentos)}\n\n"
+                                 f"PREGUNTA: {pregunta}"}],
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=cuerpo, method="POST",
+        headers={"content-type": "application/json", "x-api-key": CLAVE_ANTHROPIC,
+                 "anthropic-version": "2023-06-01"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        datos = json.loads(r.read())
+
+    _gastado[_hoy()] = hechas + 1
+    uso = datos.get("usage") or {}
+    entrada, salida = uso.get("input_tokens", 0), uso.get("output_tokens", 0)
+    coste = entrada / 1e6 * PRECIO_ENTRADA + salida / 1e6 * PRECIO_SALIDA
+    texto = "".join(b.get("text", "") for b in datos.get("content", []) if b.get("type") == "text")
+    return {
+        "respuesta": texto.strip(),
+        "modelo": MODELO,
+        "coste_usd": round(coste, 6),
+        "preguntas_hoy": _gastado[_hoy()],
+        "tope_diario": TOPE_DIARIO,
+    }

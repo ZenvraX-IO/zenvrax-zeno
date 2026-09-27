@@ -24,9 +24,13 @@ services:
       # Quien puede entrar. Vacio = cualquiera con sesion valida del cockpit; en produccion, el
       # correo del operador, porque Zeno tiene UN usuario (decision del 2026-09-27).
       ZENO_USUARIOS: ${ZENO_USUARIOS:-}
-      # El chat gasta API (~$0,006 por pregunta). Nace apagado: se enciende cuando el operador
-      # aprueba ese gasto recurrente, no por defecto.
+      # El chat gasta API. Medido sobre 30 dias reales del ecosistema: Haiku sale a $0,0017 por
+      # llamada y Sonnet a $0,0079, asi que el chat va con HAIKU (decision del operador, 27-sep).
+      # Con el tope de 60 preguntas al dia, el techo son unos 10 centimos diarios.
       ZENO_CHAT_ACTIVO: ${ZENO_CHAT_ACTIVO:-0}
+      ZENO_MODELO: ${ZENO_MODELO:-claude-haiku-4-5}
+      ZENO_TOPE_PREGUNTAS: ${ZENO_TOPE_PREGUNTAS:-60}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     networks: [zenvrax]
     healthcheck:
       test: ["CMD", "python", "-c",

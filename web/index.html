@@ -62,6 +62,19 @@
   .m-mundo{background:#40201c;color:#ffb3aa}
   .m-cuesta{background:var(--ambar-suave);color:#f3c579}
   .vacio{color:var(--gris);text-align:center;padding:40px 10px}
+  .burbujas{display:flex;flex-direction:column;gap:10px}
+  .tu,.el{max-width:88%;padding:10px 13px;border-radius:14px;font-size:14px;line-height:1.45;
+          white-space:pre-wrap}
+  .tu{align-self:flex-end;background:#232329;border-bottom-right-radius:5px}
+  .el{align-self:flex-start;background:var(--carbon);border:1px solid var(--linea);
+      border-bottom-left-radius:5px}
+  .coste{align-self:flex-start;color:#6f6f78;font-size:10.5px;margin:-6px 0 2px}
+  .escribir{display:flex;gap:8px;align-items:center;border-top:1px solid var(--linea);
+            padding:10px 12px;background:var(--negro)}
+  .escribir input{flex:1;background:#0d0d10;border:1px solid var(--linea);border-radius:20px;
+                  padding:11px 14px;color:var(--texto);font-size:16px}
+  .enviar{width:36px;height:36px;border-radius:50%;background:var(--ambar);color:#221a08;
+          border:0;font-size:17px;font-weight:700;flex:0 0 auto}
   .colas{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px}
   .cola{background:var(--carbon);border:1px solid var(--linea);border-radius:11px;
         padding:10px 11px;display:flex;gap:10px;align-items:center}
@@ -122,12 +135,19 @@
 
   <main>
     <section id="v-pendientes"></section>
-    <section id="v-chat" hidden></section>
+    <section id="v-chat" hidden>
+      <div id="burbujas" class="burbujas"></div>
+    </section>
     <section id="v-buscar" hidden>
       <input id="q" class="buscador" placeholder="qué dice la documentación sobre…">
       <div id="resultados"></div>
     </section>
   </main>
+
+  <div id="escribir" class="escribir" hidden>
+    <input id="pregunta" placeholder="pregúntale lo que sea" autocomplete="off">
+    <button id="enviar" class="enviar">↑</button>
+  </div>
 
   <nav class="pie">
     <button data-vista="pendientes" class="on">Pendiente</button>
@@ -283,14 +303,41 @@ async function busca() {
 }
 
 // ---------------------------------------------------------------- chat (apagado)
-async function cargaChat() {
-  const c = $("#v-chat");
+function burbuja(clase, texto) {
+  const d = document.createElement("div");
+  d.className = clase; d.textContent = texto;
+  $("#burbujas").appendChild(d);
+  d.scrollIntoView({ block: "end" });
+  return d;
+}
+
+async function preguntar() {
+  const caja = $("#pregunta");
+  const texto = caja.value.trim();
+  if (texto.length < 2) return;
+  caja.value = "";
+  burbuja("tu", texto);
+  const esperando = burbuja("el", "pensando…");
   try {
-    await api("/api/chat", { method: "POST", body: "{}" });
+    const r = await api("/api/chat", { method: "POST", body: JSON.stringify({ texto }) });
+    esperando.textContent = r.respuesta || "(sin respuesta)";
+    // El coste va DEBAJO de cada respuesta, no escondido en un ajuste: es la unica pieza de Zeno
+    // cuyo gasto lo decide el uso, y verlo es lo que evita la sorpresa a fin de mes.
+    const c = document.createElement("div");
+    c.className = "coste";
+    c.textContent = `$${(r.coste_usd ?? 0).toFixed(4)} · ${r.modelo} · ` +
+                    `${r.preguntas_hoy}/${r.tope_diario} preguntas hoy`;
+    $("#burbujas").appendChild(c);
+    c.scrollIntoView({ block: "end" });
   } catch (e) {
-    c.innerHTML = `<div class="vacio">${esc(e.message)}<br><br>
-      <span style="font-size:12.5px">Medido: unos $0,006 por pregunta</span></div>`;
+    esperando.textContent = e.message;
   }
+}
+
+function cargaChat() {
+  if (!$("#burbujas").children.length)
+    burbuja("el", "Pregúntame por lo que tienes pendiente, cómo van los negocios o qué dice la " +
+                  "documentación. Todavía no puedo ejecutar nada: te digo dónde está el botón.");
 }
 
 // ---------------------------------------------------------------- navegar
@@ -301,8 +348,9 @@ function ver(vista) {
     b.classList.toggle("on", b.dataset.vista === vista));
   $("#titulo").textContent = TITULOS[vista];
   if (vista === "pendientes") cargaPendientes();
-  if (vista === "chat") cargaChat();
+  if (vista === "chat") { cargaChat(); $("#pregunta").focus(); }
   if (vista === "buscar") $("#q").focus();
+  $("#escribir").hidden = vista !== "chat";
 }
 
 $("#btn-entrar").onclick = entrar;
@@ -310,6 +358,8 @@ $("#btn-codigo").onclick = comprobarCodigo;
 $("#btn-salir").onclick = salir;
 $("#pass").onkeydown = (e) => { if (e.key === "Enter") entrar(); };
 $("#codigo").onkeydown = (e) => { if (e.key === "Enter") comprobarCodigo(); };
+$("#enviar").onclick = preguntar;
+$("#pregunta").onkeydown = (e) => { if (e.key === "Enter") preguntar(); };
 $("#q").oninput = () => { clearTimeout(tecleando); tecleando = setTimeout(busca, 350); };
 document.querySelectorAll(".pie button").forEach(b => b.onclick = () => ver(b.dataset.vista));
 

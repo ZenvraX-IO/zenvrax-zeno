@@ -31,7 +31,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 import lector                                    # noqa: E402
-from servicio import sesion                      # noqa: E402
+from servicio import chat as chat_mod, sesion    # noqa: E402
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -148,14 +148,42 @@ async def buscar(q: str = Query(..., min_length=2), authorization: str = Header(
 
 # ---------------------------------------------------------------- el chat (apagado de serie)
 
+class Pregunta(BaseModel):
+    texto: str
+
+
 @app.post("/api/chat")
-async def chat(authorization: str = Header(default="")):
+async def chat(body: Pregunta, authorization: str = Header(default="")):
+    """Contesta con Haiku sobre lo que Zeno ya sabe. Cada respuesta dice lo que ha costado.
+
+    El contexto va precargado (lo pendiente, las colas y, si la pregunta lo pide, el corpus) en vez
+    de darle herramientas: con herramientas cada pregunta serian varias llamadas, que es justo lo
+    que encarece un chat.
+    """
     _quien(authorization)
     if not CHAT_ACTIVO:
-        # 501 y no 500: no está roto, es que no se ha encendido. Y el mensaje dice por qué, para que
-        # el front pueda enseñarlo en vez de un error genérico.
+        # 501 y no 500: no está roto, es que no se ha encendido. Y el mensaje dice por qué.
         raise HTTPException(501, "El chat todavía no está encendido: gasta API y necesita tu OK")
-    raise HTTPException(501, "El chat se conecta en el siguiente paso")
+    pregunta = (body.texto or "").strip()
+    if len(pregunta) < 2:
+        raise HTTPException(422, "escribe la pregunta")
+
+    lista, fallos = lector.pendientes()
+    colas, fallos_colas = lector.pendiente_completo()
+    # El corpus solo se consulta si la pregunta suena a documentacion: cada consulta de mas es
+    # tiempo de respuesta y tokens de contexto que se pagan.
+    documentos = []
+    if any(p in pregunta.lower() for p in ("documenta", "sop", "regla", "como se", "cómo se",
+                                           "donde esta", "dónde está", "procedimiento", "formula",
+                                           "fórmula", "politica", "política")):
+        documentos, _, mas_fallos = lector.documentacion(pregunta)
+        fallos_colas = fallos_colas + mas_fallos
+    try:
+        return chat_mod.responde(pregunta, lista, colas, fallos + fallos_colas, documentos)
+    except chat_mod.TopeAlcanzado as e:
+        raise HTTPException(429, f"Tope diario de preguntas alcanzado ({e})") from e
+    except chat_mod.SinClaveDeIA as e:
+        raise HTTPException(503, str(e)) from e
 
 
 # ---------------------------------------------------------------- la aplicación
