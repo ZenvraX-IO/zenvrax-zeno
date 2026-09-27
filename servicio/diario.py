@@ -41,8 +41,17 @@ def apunta(que: dict) -> None:
     try:
         LIBRO.parent.mkdir(parents=True, exist_ok=True)
         renglon = {"cuando": time.time(), **que}
-        with LIBRO.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(renglon, ensure_ascii=False) + "\n")
+        crudo = (json.dumps(renglon, ensure_ascii=False) + "\n").encode("utf-8")
+        with LIBRO.open("ab") as f:
+            # SI LA ULTIMA LINEA QUEDO A MEDIAS, se cierra antes de escribir. Lo encontro un test:
+            # si un reinicio corto una escritura y no dejo el salto de linea, el renglon siguiente
+            # se pegaba al roto y se perdian LOS DOS. Una linea rota solo puede costar una linea.
+            if f.tell():
+                with LIBRO.open("rb") as previo:
+                    previo.seek(-1, 2)
+                    if previo.read(1) != b"\n":
+                        f.write(b"\n")
+            f.write(crudo)
     except Exception:                                    # noqa: BLE001
         # Si esto reventara despues de publicar, el operador veria un error y creeria que no salio,
         # cuando si salio. El diario es para mirar despues; la accion ya esta hecha.
