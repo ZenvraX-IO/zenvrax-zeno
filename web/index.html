@@ -82,11 +82,31 @@
   .cola .q{font-size:12px;line-height:1.3}
   .cola .q span{color:var(--gris);font-size:11px}
 
-  .buscador{width:100%;background:var(--carbon);border:1px solid var(--linea);border-radius:10px;
-            padding:11px 13px;color:var(--texto);font-size:14px;margin-bottom:13px}
-  .doc{border-left:2px solid var(--ambar);padding-left:11px;margin-bottom:12px}
-  .doc .t{font-weight:600;font-size:14px}
-  .doc .s{color:var(--gris);font-size:13px}
+  /* La caja de buscar, pensada para el pulgar y no para el raton:
+     · font-size 16px OBLIGATORIO. Con menos, iOS hace ZOOM al enfocar y descoloca la pantalla
+       entera. Estaba a 14px y era el fallo mas visible en el movil.
+     · pegada arriba: al bajar por los resultados se perdia y habia que subir del todo para
+       cambiar la busqueda.
+     · con boton de borrar: en un teclado tactil, vaciar un campo a base de retroceso es un castigo. */
+  .cajabuscar{position:sticky;top:0;z-index:4;background:var(--negro);
+              padding:2px 0 12px;display:flex;gap:8px;align-items:center}
+  .buscador{flex:1;background:var(--carbon);border:1px solid var(--linea);border-radius:12px;
+            padding:13px 14px;color:var(--texto);font-size:16px;-webkit-appearance:none}
+  .buscador:focus{outline:none;border-color:var(--ambar)}
+  .limpiar{background:none;border:0;color:var(--gris);font-size:20px;width:40px;height:40px;
+           flex:0 0 auto}
+  /* Cada resultado es una zona TOCABLE de 44px minimo, no una linea de texto. */
+  .doc{display:block;text-decoration:none;color:inherit;background:var(--carbon);
+       border:1px solid var(--linea);border-left:3px solid var(--ambar);border-radius:11px;
+       padding:12px 13px;margin-bottom:10px;min-height:44px}
+  .doc:active{background:#1e1e24}
+  .doc .t{font-weight:600;font-size:15px;line-height:1.3;margin-bottom:5px}
+  .doc .s{color:var(--gris);font-size:13.5px;line-height:1.45}
+  .doc .p{display:inline-block;font-size:11px;color:var(--ambar);background:var(--ambar-suave);
+          border-radius:5px;padding:1px 6px;margin-bottom:6px}
+  .sugerencias{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .sug{background:var(--carbon);border:1px solid var(--linea);border-radius:18px;
+       padding:9px 14px;font-size:13.5px;color:var(--texto)}
   .degradado{color:#f3c579;font-size:12.5px;margin-bottom:10px}
 
   .login{max-width:360px;margin:0 auto;padding:50px 4px}
@@ -139,7 +159,12 @@
       <div id="burbujas" class="burbujas"></div>
     </section>
     <section id="v-buscar" hidden>
-      <input id="q" class="buscador" placeholder="qué dice la documentación sobre…">
+      <div class="cajabuscar">
+        <input id="q" class="buscador" type="search" enterkeyhint="search"
+               autocomplete="off" autocapitalize="off" autocorrect="off"
+               placeholder="busca en la documentación">
+        <button id="limpiar" class="limpiar" hidden aria-label="borrar">✕</button>
+      </div>
       <div id="resultados"></div>
     </section>
   </main>
@@ -283,10 +308,21 @@ async function cargaPendientes() {
 
 // ---------------------------------------------------------------- buscar
 let tecleando;
+
+// Una pantalla en blanco con una caja no dice que se puede preguntar. Estas cuatro salen de lo que
+// el corpus responde bien, comprobado contra produccion.
+const EJEMPLOS = ["fórmula de precios", "tope diario de arcos", "cadencia de Claire",
+                  "guardas de gasto de API"];
+function sugerencias() {
+  return `<div class="resumen">Prueba con</div><div class="sugerencias">` +
+    EJEMPLOS.map(e => `<button class="sug" data-q="${esc(e)}">${esc(e)}</button>`).join("") +
+    `</div>`;
+}
 async function busca() {
   const q = $("#q").value.trim();
   const c = $("#resultados");
-  if (q.length < 2) { c.innerHTML = ""; return; }
+  $("#limpiar").hidden = !q;
+  if (q.length < 2) { c.innerHTML = sugerencias(); return; }
   try {
     const d = await api("/api/buscar?q=" + encodeURIComponent(q));
     let html = "";
@@ -294,10 +330,24 @@ async function busca() {
       html += '<div class="degradado">Buscando solo por texto: el servicio de significado no responde</div>';
     if (d.modo === "no disponible")
       html += '<div class="aviso-fallo">El corpus no está disponible ahora mismo</div>';
-    if (!(d.resultados || []).length) html += '<div class="vacio">nada sobre eso</div>';
-    for (const r of d.resultados || [])
-      html += `<div class="doc"><div class="t">${esc(r.title || r.doc || "?")}</div>
-               ${r.sub ? `<div class="s">${esc(r.sub)}</div>` : ""}</div>`;
+    const res = d.resultados || [];
+    if (!res.length) {
+      html += `<div class="vacio">nada en la documentación sobre eso</div>`;
+    } else {
+      html += `<div class="resumen">${res.length} documento${res.length === 1 ? "" : "s"}</div>`;
+      for (const r of res) {
+        // El fragmento que RESPONDE va entero, no cortado a una linea: leerlo es lo que evita
+        // abrir el documento para nada, y en el movil hay sitio de sobra a lo alto.
+        const trozo = r.trozo || (r.sub || "").replace(/^\d+%\s*·\s*/, "");
+        const puntos = r.puntos ?? parseInt((r.sub || "").match(/^(\d+)%/)?.[1] ?? "", 10);
+        html += `<a class="doc" href="https://cockpit.zenvrax.com/conocimiento" target="_blank"
+                    rel="noopener">
+          ${Number.isFinite(puntos) ? `<div class="p">${puntos}% de coincidencia</div>` : ""}
+          <div class="t">${esc(r.title || r.id || "?")}</div>
+          ${trozo ? `<div class="s">${esc(trozo)}</div>` : ""}
+        </a>`;
+      }
+    }
     c.innerHTML = html;
   } catch (e) { c.innerHTML = `<div class="aviso-fallo">${esc(e.message)}</div>`; }
 }
@@ -349,7 +399,10 @@ function ver(vista) {
   $("#titulo").textContent = TITULOS[vista];
   if (vista === "pendientes") cargaPendientes();
   if (vista === "chat") { cargaChat(); $("#pregunta").focus(); }
-  if (vista === "buscar") $("#q").focus();
+  if (vista === "buscar") {
+    if (!$("#resultados").innerHTML) $("#resultados").innerHTML = sugerencias();
+    $("#q").focus();
+  }
   $("#escribir").hidden = vista !== "chat";
 }
 
@@ -361,6 +414,15 @@ $("#codigo").onkeydown = (e) => { if (e.key === "Enter") comprobarCodigo(); };
 $("#enviar").onclick = preguntar;
 $("#pregunta").onkeydown = (e) => { if (e.key === "Enter") preguntar(); };
 $("#q").oninput = () => { clearTimeout(tecleando); tecleando = setTimeout(busca, 350); };
+$("#limpiar").onclick = () => { $("#q").value = ""; $("#q").focus(); busca(); };
+// Las sugerencias se atienden por delegacion: se pintan despues, asi que no existen todavia cuando
+// se registran los manejadores.
+$("#resultados").onclick = (e) => {
+  const s = e.target.closest(".sug");
+  if (!s) return;
+  $("#q").value = s.dataset.q;
+  busca();
+};
 document.querySelectorAll(".pie button").forEach(b => b.onclick = () => ver(b.dataset.vista));
 
 // Si ya había sesión, se entra directo. Si el token ya no vale, `api` hace salir() solo.
