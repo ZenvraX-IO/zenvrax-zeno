@@ -3,13 +3,22 @@
 El icono lo eligió el operador el 2026-09-27 entre cuatro propuestas, mirándolas a 140px y a **48px**,
 que es el tamaño al que se ven de verdad en la pantalla de inicio.
 
-**Elegida: la Z blanca con el punto ámbar en el cruce.** El punto no es decorativo: existe en el
-icono del cockpit, en el centro de su X, así que es una firma heredada de la casa.
+**Elegida en SEGUNDA vuelta (27-sep): dos barras blancas y la diagonal en ámbar cruzando por
+encima, con un hueco de aire a los lados.**
+
+La primera versión (Z blanca con un punto ámbar) la rechazó el operador: *"el logo se ve muy
+pobre"*. Tenía razón, y el diagnóstico es concreto: era una Z de tres barras del mismo grosor, sin
+ninguna idea dentro. Los dos vecinos sí la tienen, y por eso funcionan: Zenvrax juega con dos pesos
+y remata con un punto, y Xrise convierte un brazo de la X en flecha.
+
+La diagonal cruzando es el mismo recurso que el cockpit, donde la X verde pasa sobre las barras
+blancas: **dos pesos y dos colores**, que es lo que hace que un glifo se lea de lejos.
 
 ```
-fondo     negro (#101012), esquinas redondeadas al 22%
-glifo     Z de trazo grueso, blanco (#F5F5F5)
-firma     punto ámbar (#F0A830) en el cruce
+fondo     negro, esquinas redondeadas al 22%
+barras    blancas
+diagonal  ambar, por encima y con aire negro a los lados
+favicon   la Z entera en ambar, sin aire: a 32px los dos colores se empastan
 ```
 
 El ámbar se eligió porque **no está en ninguno de los dos iconos existentes**: Zenvrax usa verde
