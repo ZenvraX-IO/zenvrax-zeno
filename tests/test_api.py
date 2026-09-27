@@ -579,3 +579,35 @@ def test_ningun_nombre_local_tapa_un_modulo_importado():
         for tapado in locales & importados:
             culpables.append(f"{f.name}() tapa el modulo {tapado}")
     assert not culpables, culpables
+
+
+# ---------------------------------------------------------------- el chat se acuerda
+
+def test_el_chat_manda_lo_hablado_antes(monkeypatch):
+    """Sin esto, cada pregunta partia de cero y un "y eso cuanto es" no tenia a que referirse. Es
+    como hablar con alguien a quien se le olvida entre frase y frase."""
+    monkeypatch.setattr(api_mod, "CHAT_ACTIVO", True)
+    monkeypatch.setattr(lector, "pendientes", lambda: ([], []))
+    monkeypatch.setattr(lector, "estado", lambda: ({}, []))
+    monkeypatch.setattr(lector, "ventas_gutlyn", lambda: ({}, []))
+    visto = {}
+    monkeypatch.setattr(api_mod.chat_mod, "responde",
+                        lambda *a, **k: visto.update(k) or {"respuesta": "ok"})
+    cliente.post("/api/chat", headers=CABECERA, json={
+        "texto": "y eso cuanto es",
+        "turnos": [{"de": "yo", "texto": "como van las ventas"},
+                   {"de": "zeno", "texto": "cero en 30 dias"}]})
+    assert len(visto["turnos"]) == 2
+    assert visto["turnos"][0]["texto"] == "como van las ventas"
+
+
+def test_sin_turnos_el_chat_sigue_funcionando(monkeypatch):
+    """La primera pregunta de una conversacion no tiene historial, y una version vieja del front
+    tampoco lo manda."""
+    monkeypatch.setattr(api_mod, "CHAT_ACTIVO", True)
+    monkeypatch.setattr(lector, "pendientes", lambda: ([], []))
+    monkeypatch.setattr(lector, "estado", lambda: ({}, []))
+    monkeypatch.setattr(lector, "ventas_gutlyn", lambda: ({}, []))
+    monkeypatch.setattr(api_mod.chat_mod, "responde", lambda *a, **k: {"respuesta": "ok"})
+    assert cliente.post("/api/chat", headers=CABECERA,
+                        json={"texto": "hola que tal"}).status_code == 200

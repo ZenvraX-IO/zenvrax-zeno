@@ -195,10 +195,48 @@ def _contexto(pendientes: list, colas: list, fallos: list, documentos: list,
     return "\n\n".join(partes) or "(sin datos: dilo)"
 
 
+#: Cuantos turnos anteriores viajan con cada pregunta. Seis son tres idas y venidas, que es lo que
+#: dura una conversacion util: "como van las ventas", "y comparado con el mes pasado", "ponme eso en
+#: euros". Mas historial encarece cada pregunta sin mejorar la respuesta, porque el contexto de
+#: negocio va entero delante igualmente.
+TURNOS = int(os.environ.get("ZENO_TURNOS", "6"))
+#: Cada turno se recorta: una respuesta larga entera, repetida en las tres preguntas siguientes,
+#: triplica el coste de la conversacion sin aportar.
+LARGO_TURNO = 700
+
+
+def _historial(turnos: list | None) -> list:
+    """Los turnos anteriores en el formato que espera el modelo, recortados y bien alternados.
+
+    La API RECHAZA dos mensajes seguidos del mismo lado, y eso pasa de verdad: si una respuesta
+    fallo, el front tiene dos burbujas tuyas seguidas en pantalla. Aqui se descarta la repetida en
+    vez de dejar que la peticion entera falle con un error que no dice nada.
+    """
+    fuera = []
+    for t in (turnos or [])[-TURNOS:]:
+        quien = "assistant" if t.get("de") == "zeno" else "user"
+        texto = str(t.get("texto") or "").strip()[:LARGO_TURNO]
+        if not texto:
+            continue
+        if fuera and fuera[-1]["role"] == quien:
+            fuera[-1] = {"role": quien, "content": texto}
+            continue
+        fuera.append({"role": quien, "content": texto})
+    # El primero tiene que ser del usuario: si el recorte deja una respuesta suelta arriba, sobra.
+    while fuera and fuera[0]["role"] != "user":
+        fuera.pop(0)
+    return fuera
+
+
 def responde(pregunta: str, pendientes: list, colas: list, fallos: list,
              documentos: list, estado: dict | None = None,
-             ventas: dict | None = None) -> dict:
-    """Una respuesta y lo que ha costado. Lanza si falta la clave o se alcanzó el tope."""
+             ventas: dict | None = None, turnos: list | None = None) -> dict:
+    """Una respuesta y lo que ha costado. Lanza si falta la clave o se alcanzó el tope.
+
+    `turnos` es lo hablado antes en esta misma conversacion. Sin ello cada pregunta partia de cero y
+    un "y eso cuanto es" no tenia a que referirse, que es como hablar con alguien que se te olvida
+    entre frase y frase.
+    """
     if not CLAVE_ANTHROPIC:
         raise SinClaveDeIA("no hay clave de Anthropic configurada")
     hechas = preguntas_hoy()
@@ -210,9 +248,13 @@ def responde(pregunta: str, pendientes: list, colas: list, fallos: list,
         "max_tokens": 900,
         "temperature": 0.2,          # respuestas con contexto: la tabla de la casa dice 0.2
         "system": SISTEMA,
-        "messages": [{"role": "user",
-                      "content": f"{_contexto(pendientes, colas, fallos, documentos, estado, ventas)}\n\n"
-                                 f"PREGUNTA: {pregunta}"}],
+        # El contexto de negocio va SIEMPRE pegado a la ULTIMA pregunta, no al principio de la
+        # conversacion: las cifras cambian mientras se habla, y dejarlas arriba haria que Zeno
+        # contestara a la tercera pregunta con los datos de hace diez minutos sin saberlo.
+        "messages": _historial(turnos) + [
+            {"role": "user",
+             "content": f"{_contexto(pendientes, colas, fallos, documentos, estado, ventas)}\n\n"
+                        f"PREGUNTA: {pregunta}"}],
     }).encode()
     req = urllib.request.Request(
         "https://api.anthropic.com/v1/messages", data=cuerpo, method="POST",

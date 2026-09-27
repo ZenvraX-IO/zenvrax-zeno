@@ -316,8 +316,17 @@ async def buscar(q: str = Query(..., min_length=2), authorization: str = Header(
 
 # ---------------------------------------------------------------- el chat (apagado de serie)
 
+class Turno(BaseModel):
+    de: str
+    texto: str
+
+
 class Pregunta(BaseModel):
     texto: str
+    #: Lo hablado antes en esta conversacion. Lo manda el FRONT, que es quien la tiene en pantalla:
+    #: guardarla en el servidor seria estado nuevo que hay que limpiar, y ademas la conversacion se
+    #: acaba al cerrar la aplicacion, asi que no hay nada que persistir.
+    turnos: list[Turno] = []
 
 
 @app.post("/api/chat")
@@ -354,7 +363,8 @@ async def chat(body: Pregunta, authorization: str = Header(default="")):
         fallos_colas = fallos_colas + mas_fallos
     try:
         return chat_mod.responde(pregunta, lista, colas, fallos + fallos_colas,
-                                 documentos, estado, ventas)
+                                 documentos, estado, ventas,
+                                 turnos=[t.model_dump() for t in body.turnos])
     except chat_mod.TopeAlcanzado as e:
         raise HTTPException(429, f"Tope diario de preguntas alcanzado ({e})") from e
     except chat_mod.SinClaveDeIA as e:

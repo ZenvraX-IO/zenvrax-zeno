@@ -538,10 +538,17 @@ async function preguntar() {
   const texto = caja.value.trim();
   if (texto.length < 2) return;
   caja.value = "";
+  // Lo hablado antes viaja con la pregunta. Se lee de la PANTALLA, que es donde esta la
+  // conversacion: guardarla en el servidor seria estado nuevo, y al cerrar la aplicacion la
+  // conversacion se acaba de todas formas.
+  const turnos = [...document.querySelectorAll("#burbujas .tu, #burbujas .el")]
+    .map(b => ({ de: b.classList.contains("tu") ? "yo" : "zeno", texto: b.textContent }))
+    .filter(t => t.texto && t.texto !== "pensando…");
   burbuja("tu", texto);
   const esperando = burbuja("el", "pensando…");
   try {
-    const r = await api("/api/chat", { method: "POST", body: JSON.stringify({ texto }) });
+    const r = await api("/api/chat", { method: "POST",
+                                       body: JSON.stringify({ texto, turnos }) });
     esperando.textContent = r.respuesta || "(sin respuesta)";
     // El coste va DEBAJO de cada respuesta, no escondido en un ajuste: es la unica pieza de Zeno
     // cuyo gasto lo decide el uso, y verlo es lo que evita la sorpresa a fin de mes.
