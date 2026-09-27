@@ -233,3 +233,19 @@ def test_el_dominio_sale_de_la_cuenta_y_no_esta_escrito_a_mano():
     """Si el dominio fuera una constante, añadir una tercera cuenta la mandaria al dominio de otra."""
     assert google._dominio("a@b.com") == "b.com"
     assert google._dominio("raro") == "", "sin arroba no hay dominio que acotar, y no se inventa"
+
+
+def test_el_enlace_no_repite_ningun_parametro(monkeypatch):
+    """PASO DE VERDAD el 2026-09-27, en la primera autorizacion real: el enlace llevaba `state` dos
+    veces, uno puesto aqui y otro pegado al final por el servicio, y Google contesto "Acceso
+    bloqueado: OAuth 2 parameters can only have a single value: state".
+
+    Se comprueba TODA la direccion y no solo `state`: el mismo error se puede repetir manana con
+    `prompt` o con `scope`, y el mensaje de Google es igual de opaco.
+    """
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "id")
+    enlace = google.enlace_para_autorizar("zenvrax", "vale-de-un-solo-uso")
+    trozos = urllib.parse.parse_qs(urllib.parse.urlparse(enlace).query)
+    repetidos = {k: v for k, v in trozos.items() if len(v) > 1}
+    assert not repetidos, f"Google rechaza los parametros repetidos: {repetidos}"
+    assert trozos["state"] == ["vale-de-un-solo-uso"], "el vale tiene que ser EL state, no otro mas"

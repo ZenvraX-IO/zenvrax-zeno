@@ -385,9 +385,10 @@ def test_conectar_una_cuenta_que_no_existe_da_404():
 
 
 def test_el_enlace_de_conectar_lleva_el_vale(monkeypatch):
-    monkeypatch.setattr(api_mod.google, "enlace_para_autorizar", lambda n: "https://g/?x=1")
+    monkeypatch.setattr(api_mod.google, "enlace_para_autorizar",
+                        lambda n, estado="": "https://g/?x=1&state=" + estado)
     d = cliente.post("/api/google/conectar?negocio=gutlyn", headers=CABECERA).json()
-    assert "state=" in d["enlace"]
+    assert d["enlace"].count("state=") == 1, "dos veces state y Google bloquea el acceso"
     vale = d["enlace"].split("state=")[1]
     assert api_mod._VALES[vale][0] == "gutlyn", "el vale tiene que recordar de qué cuenta era"
 

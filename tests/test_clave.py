@@ -148,8 +148,12 @@ def test_un_token_con_la_firma_tocada_no_vale():
     """EL TEST QUE IMPORTA. Sin esto, cualquiera escribe su propio token y entra sin la clave."""
     t = clave_mod.emite("yo@zenvrax.com")
     cabeza, cuerpo, firma = t.split(".")
+    # El ultimo caracter se cambia por OTRO, no por un "0" fijo: con un "0", una vez de cada
+    # dieciseis la firma ya acababa en "0" y el token "falsificado" era el bueno. Un test que falla
+    # una vez de cada dieciseis es peor que no tenerlo, porque se acaba ignorando.
+    otro = "1" if firma[-1] != "1" else "2"
     for falso in (f"{cabeza}.{cuerpo}.{'0' * 32}",
-                  f"{cabeza}.{cuerpo}.{firma[:-1]}0",
+                  f"{cabeza}.{cuerpo}.{firma[:-1]}{otro}",
                   f"{cabeza}.{cuerpo}."):
         with pytest.raises(clave_mod.ClaveMala):
             clave_mod.lee(falso)

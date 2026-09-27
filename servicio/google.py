@@ -140,8 +140,14 @@ def _guarda_cofre(datos: dict) -> None:
 
 # ---------------------------------------------------------------- autorizar
 
-def enlace_para_autorizar(negocio: str) -> str:
-    """La direccion a la que el operador va para dar permiso a UNA de sus cuentas."""
+def enlace_para_autorizar(negocio: str, estado: str = "") -> str:
+    """La direccion a la que el operador va para dar permiso a UNA de sus cuentas.
+
+    `estado` es el vale de un solo uso que pone el servicio. Viaja como parametro `state`, y por eso
+    se recibe AQUI en vez de pegarlo luego al final de la direccion: pegarlo fuera dejaba el `state`
+    dos veces, y Google rechaza el parametro repetido con "OAuth 2 parameters can only have a single
+    value: state". Paso en la primera autorizacion real, el 2026-09-27.
+    """
     if negocio not in CUENTAS:
         raise NoAutorizado(f"no conozco el negocio {negocio!r}")
     ident, _ = _cliente(negocio)
@@ -164,7 +170,7 @@ def enlace_para_autorizar(negocio: str) -> str:
         # `hd` es el filtro de verdad: limita el selector al dominio de ESA cuenta, asi que una
         # personal de gmail.com ni aparece. `login_hint` solo sugiere; esto acota.
         "hd": _dominio(CUENTAS[negocio]),
-        "state": negocio,
+        "state": estado or negocio,
     }
     return "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(parametros)
 

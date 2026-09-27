@@ -276,10 +276,12 @@ async def google_conectar(negocio: str = Query(...), authorization: str = Header
     if negocio not in google.CUENTAS:
         raise HTTPException(404, f"no conozco la cuenta {negocio}")
     try:
-        enlace = google.enlace_para_autorizar(negocio)
+        # El vale va DENTRO, no pegado al final: dos `state` en la misma direccion hacen que Google
+        # conteste "OAuth 2 parameters can only have a single value".
+        enlace = google.enlace_para_autorizar(negocio, _vale_nuevo(negocio))
     except google.SinConfigurar as e:
         raise HTTPException(503, str(e)) from e
-    return {"enlace": enlace + "&state=" + urllib.parse.quote(_vale_nuevo(negocio))}
+    return {"enlace": enlace}
 
 
 @app.get("/api/google/vuelta")
