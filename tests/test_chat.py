@@ -93,3 +93,17 @@ def test_el_contexto_va_con_la_ULTIMA_pregunta_no_al_principio(monkeypatch):
     assert "LO PENDIENTE" in mensajes[-1]["content"] or "sin datos" in mensajes[-1]["content"]
     # Y en los turnos viejos NO va el contexto: repetirlo en cada uno multiplicaria el coste.
     assert "PREGUNTA:" not in mensajes[0]["content"]
+
+
+def test_el_prompt_prohibe_recalcular_lo_que_ya_viene_dado():
+    """PASO DE VERDAD el 2026-09-27, en la primera conversacion con memoria. Con "Caja: $1,150",
+    "Beneficio/mes: $-99" y "Runway: 11 meses" delante, la respuesta fue que ese dinero "cubre poco
+    mas de una semana", contradiciendo en la misma frase el runway que tenia escrito.
+
+    Un prompt no garantiza nada, asi que esto no prueba que el modelo obedezca: prueba que la regla
+    sigue estando. La otra mitad, que la cuenta se escriba cuando se hace, es lo que permite
+    pillarlo de un vistazo la proxima vez.
+    """
+    for regla in ("no lo recalcules", "ESCRIBE la operacion", "El dato manda sobre"):
+        assert regla in chat.SISTEMA, f"falta la regla: {regla}"
+    assert "no lo recalcules" in chat.SISTEMA_MANANA
