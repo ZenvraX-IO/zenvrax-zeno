@@ -148,3 +148,47 @@ def test_zeno_no_guarda_contrasenas_ni_firma_tokens():
     for prohibido in ("jwt.encode", "bcrypt", "password_hash", "hashpw", "secret_key", "SECRET"):
         assert prohibido not in src, (
             f"Zeno no puede manejar {prohibido}: su identidad la pone el cockpit")
+
+
+# ------------------------------------------------------------- Zeno tiene UN usuario
+
+def test_una_sesion_valida_de_otra_cuenta_no_entra(monkeypatch):
+    """El operador (2026-09-27): *"Zeno solo tendrá un único usuario que soy yo"*.
+
+    Es una guarda, no una nota de producto: el cockpit ya tiene roles (owner, operator) y puede
+    tener más cuentas algún día. Sin esta lista, cualquiera de ellas entraría también en el
+    asistente, que es la pieza que en J4 va a ejecutar acciones que publican en nombre del operador.
+    """
+    monkeypatch.setattr(sesion, "USUARIOS", ["ghidalgo@zenvrax.com"])
+    monkeypatch.setattr(sesion, "_pide", _responde(
+        {"/auth/me": {"id": "u2", "role": "operator", "email": "otro@zenvrax.com"}}))
+    with pytest.raises(sesion.NoAutenticado):
+        sesion.quien_es("jwt-de-otro")
+
+
+def test_el_operador_si_entra(monkeypatch):
+    monkeypatch.setattr(sesion, "USUARIOS", ["ghidalgo@zenvrax.com"])
+    monkeypatch.setattr(sesion, "_pide", _responde(
+        {"/auth/me": {"id": "u1", "role": "owner", "email": "ghidalgo@zenvrax.com"}}))
+    assert sesion.quien_es("jwt").user_id == "u1"
+
+
+def test_el_rechazado_no_se_queda_en_la_cache(monkeypatch):
+    """Si se cachea antes de comprobar quién es, el primer rechazado queda guardado como verificado
+    y a partir de ahí entra: el guard existiría y no serviría de nada."""
+    monkeypatch.setattr(sesion, "USUARIOS", ["ghidalgo@zenvrax.com"])
+    monkeypatch.setattr(sesion, "_pide", _responde(
+        {"/auth/me": {"id": "u2", "role": "operator", "email": "otro@zenvrax.com"}}))
+    for _ in range(2):
+        with pytest.raises(sesion.NoAutenticado):
+            sesion.quien_es("jwt-de-otro")
+    assert "jwt-de-otro" not in sesion._verificados
+
+
+def test_sin_lista_configurada_no_se_bloquea_a_nadie(monkeypatch):
+    """Por defecto la lista está vacía para que un entorno de pruebas no se quede fuera. En
+    producción se pone el correo del operador, y eso va en el .env del servidor."""
+    monkeypatch.setattr(sesion, "USUARIOS", [])
+    monkeypatch.setattr(sesion, "_pide", _responde(
+        {"/auth/me": {"id": "u9", "role": "operator", "email": "quien@sea.com"}}))
+    assert sesion.quien_es("jwt").user_id == "u9"

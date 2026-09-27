@@ -33,6 +33,14 @@ from dataclasses import dataclass
 
 COCKPIT = os.environ.get("ZENO_COCKPIT_URL", "https://cockpit.zenvrax.com/api")
 
+#: Quien puede entrar en Zeno. El operador (2026-09-27): *"Zeno solo tendra un unico usuario que soy
+#: yo"*. Eso no es solo una nota de producto, es una GUARDA: el cockpit puede tener mas usuarios
+#: algun dia (ya tiene roles owner/operator), y sin esta lista cualquiera de ellos entraria tambien
+#: en el asistente, que es la pieza que en J4 va a ejecutar acciones que publican.
+#: Vacio = cualquiera con sesion valida del cockpit. Se deja asi por defecto para que un entorno de
+#: pruebas no se quede fuera, y en produccion se pone el correo del operador.
+USUARIOS = [u.strip().lower() for u in os.environ.get("ZENO_USUARIOS", "").split(",") if u.strip()]
+
 #: Cuánto se fía Zeno de un token ya verificado antes de volver a preguntar al cockpit.
 #: 60 s es el equilibrio: sin caché, cada pantalla dispara una llamada de más; con mucha, una sesión
 #: revocada seguiría entrando demasiado rato. El cockpit ya invalida por `token_version`.
@@ -113,6 +121,10 @@ def quien_es(token: str, ahora=None) -> Quien:
         # El cockpit contestó 200 pero sin identidad. Dejar pasar esto seria dar por bueno cualquier
         # 200 que venga de donde sea.
         raise NoAutenticado("el cockpit no ha dicho quien es")
+    if USUARIOS and quien.email.lower() not in USUARIOS:
+        # Sesion valida del cockpit, pero de alguien que no es el operador. Se rechaza ANTES de
+        # cachear: si no, el primer rechazado quedaria guardado como verificado.
+        raise NoAutenticado("esta cuenta no tiene acceso a Zeno")
     _verificados[token] = (ahora, quien)
     return quien
 

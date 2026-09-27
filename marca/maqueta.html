@@ -78,6 +78,19 @@
   .login h2{text-align:center;margin:0 0 4px;font-size:19px}
   .login p{text-align:center;color:var(--gris);margin:0 0 22px;font-size:12.5px}
   .nota{color:var(--gris);font-size:11.5px;text-align:center;margin-top:12px}
+  .burbujas{display:flex;flex-direction:column;gap:10px}
+  .tu,.el{max-width:86%;padding:10px 12px;border-radius:14px;font-size:13px;line-height:1.45}
+  .tu{align-self:flex-end;background:#232329;border-bottom-right-radius:5px}
+  .el{align-self:flex-start;background:var(--carbon);border:1px solid var(--linea);
+      border-bottom-left-radius:5px}
+  .el b{color:var(--ambar)}
+  .accion{margin-top:9px;display:flex;gap:6px;flex-wrap:wrap}
+  .escribir{display:flex;gap:7px;align-items:center;border-top:1px solid var(--linea);padding:10px 12px}
+  .escribir input{flex:1;background:#0d0d10;border:1px solid var(--linea);border-radius:20px;
+                  padding:9px 13px;color:var(--gris);font-size:13px}
+  .enviar{width:34px;height:34px;border-radius:50%;background:var(--ambar);color:#221a08;
+          display:flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
+  .coste{color:#6f6f78;font-size:10.5px;text-align:center;padding:0 0 8px}
   .preguntas{max-width:980px;margin:26px 0 0;color:var(--gris)}
   .preguntas li{margin-bottom:7px}
   .preguntas b{color:var(--texto)}
@@ -124,8 +137,8 @@
           <div class="extracto">La pregunta de la fase de carga sale constantemente, y la
             investigación tiene una respuesta más clara de lo que…</div>
           <div class="btns">
-            <button class="b primaria">Aprobar y publicar <span class="aviso mundo">sale al mundo</span></button>
-            <button class="b">Ver preview</button>
+            <button class="b primaria">Ver preview</button>
+            <button class="b">Aprobar y publicar <span class="aviso mundo">sale al mundo</span></button>
             <button class="b gasta">Regenerar <span class="aviso cuesta">cuesta</span></button>
           </div>
         </div>
@@ -137,42 +150,40 @@
             aparece aquí con sus botones.</div>
         </div>
       </div>
-      <div class="pie"><div class="on">Pendiente</div><div>Negocios</div><div>Buscar</div></div>
+      <div class="pie"><div class="on">Pendiente</div><div>Chat</div><div>Buscar</div></div>
     </div>
     <div class="rotulo">2 · Lo que espera tu OK (la pantalla de siempre)</div>
   </div>
 
-  <!-- 3 · NEGOCIOS -->
+  <!-- 3 · CHAT -->
   <div>
     <div class="movil">
-      <div class="barra"><div class="marca"><i></i><s></s><u></u></div><div class="titulo">Negocios</div></div>
-      <div class="cuerpo">
-        <div class="neg">Zenvrax IO · consultoría</div>
-        <div class="kpis">
-          <div class="kpi"><div class="k">Caja</div><div class="v">$1.150</div></div>
-          <div class="kpi mal"><div class="k">Beneficio/mes</div><div class="v">-$99</div></div>
-          <div class="kpi ojo"><div class="k">Runway</div><div class="v">11 meses</div></div>
-          <div class="kpi"><div class="k">Leads A/B</div><div class="v">20</div></div>
-        </div>
-        <div class="salud">115 workflows activos de 158 · ninguno con error</div>
-
-        <div class="neg g">GutLyn+ · ecommerce</div>
-        <div class="tarjeta" style="margin-bottom:9px">
-          <div class="extracto" style="margin:0">Sin ventas registradas todavía. Cuando se conecte
-            la tienda, los números aparecen solos.</div>
-        </div>
-        <div class="kpis"><div class="kpi ojo"><div class="k">Waitlist sin contactar</div><div class="v">57</div></div></div>
-        <div class="salud">39 workflows activos de 48 · ninguno con error</div>
-
-        <div class="neg" style="margin-top:14px">Hoy, lo primero</div>
-        <div class="tarjeta">
-          <div class="post" style="font-size:13px">La versión inglesa de la landing no existe para Google</div>
-          <div class="extracto" style="margin:0">alta · vencida el 15 de septiembre · 3 pendientes, 3 urgentes</div>
+      <div class="barra"><div class="marca"><i></i><s></s><u></u></div><div class="titulo">Chat</div></div>
+      <div class="cuerpo" style="min-height:396px">
+        <div class="burbujas">
+          <div class="tu">¿cómo vamos de caja?</div>
+          <div class="el">Zenvrax tiene <b>$1.150</b> y pierde <b>$99 al mes</b>, o sea
+            <b>11 meses</b> de margen. GutLyn todavía no registra ventas en Xrise.</div>
+          <div class="tu">¿qué hay pendiente hoy?</div>
+          <div class="el">Una cosa, de GutLyn: el post <b>W5/P16 D35</b>. Aprobarlo lo publica en
+            Instagram y Facebook, y eso no se deshace.
+            <div class="accion">
+              <button class="b">Ver preview</button>
+              <button class="b">Aprobar y publicar</button>
+            </div>
+          </div>
+          <div class="tu">¿cuánto llevo gastado en API este mes?</div>
+          <div class="el">Lo miro en el medidor del cockpit y te lo digo con el desglose por agente.</div>
         </div>
       </div>
-      <div class="pie"><div>Pendiente</div><div class="on">Negocios</div><div>Buscar</div></div>
+      <div class="coste">cada pregunta cuesta unos $0,006</div>
+      <div class="escribir">
+        <input value="pregúntale lo que sea" readonly>
+        <div class="enviar">↑</div>
+      </div>
+      <div class="pie"><div>Pendiente</div><div class="on">Chat</div><div>Buscar</div></div>
     </div>
-    <div class="rotulo">3 · Cómo van los dos</div>
+    <div class="rotulo">3 · Preguntarle en lenguaje normal</div>
   </div>
 
   <!-- 4 · BUSCAR -->
@@ -193,7 +204,7 @@
         <div class="nota" style="margin-top:16px">Si el servicio de significado se cae, lo dice y
           busca por texto. Nunca contesta “no hay nada” sin avisar.</div>
       </div>
-      <div class="pie"><div>Pendiente</div><div>Negocios</div><div class="on">Buscar</div></div>
+      <div class="pie"><div>Pendiente</div><div>Chat</div><div class="on">Buscar</div></div>
     </div>
     <div class="rotulo">4 · Qué dice la documentación</div>
   </div>
@@ -201,15 +212,16 @@
 </div>
 
 <ul class="preguntas">
-  <li><b>Lo que NO está y podría estar:</b> un chat para preguntarle en lenguaje normal. Hoy son tres
-    pantallas fijas. El chat es lo que convierte esto en un asistente y no en otro panel.</li>
-  <li><b>Lo que hay de más, quizá:</b> la pestaña de Negocios repite lo que ya ves en el cockpit y en
-    Xrise. Si no la vas a mirar aquí, se quita y Zeno queda en pendientes y buscar.</li>
-  <li><b>Lo que falta y es J4:</b> tu correo y tu calendario. Hoy Zeno lee los dos sistemas, no tu
-    bandeja.</li>
-  <li><b>Una decisión de la pantalla 2:</b> ahora “Aprobar y publicar” es el botón grande. Si
-    prefieres que lo irreversible NO sea el más fácil de pulsar, se invierte y el grande pasa a ser
-    “Ver preview”.</li>
+  <li><b>Decidido el 27-sep:</b> fuera la pestaña de Negocios (repetía el cockpit y Xrise) · el chat
+    entra · en la tarjeta, el botón grande pasa a ser <b>Ver preview</b>, para que lo irreversible no
+    sea lo más fácil de pulsar con el pulgar · Zeno tiene <b>un solo usuario</b>.</li>
+  <li><b>El chat cuesta dinero, y conviene saberlo antes:</b> medido sobre el chat del Brain que ya
+    existe, <b>$0,0058 por pregunta</b> (una sola llamada registrada, así que la media tiene poca
+    muestra). A veinte preguntas al día son unos <b>$3,5 al mes</b>.</li>
+  <li><b>Lo que el chat NO hará todavía:</b> ejecutar. Los botones que salen en una respuesta son los
+    mismos del catálogo, con su contrato, pero ejecutarlos es J4. Hasta entonces el chat contesta y
+    enlaza.</li>
+  <li><b>Sigue fuera y es J5:</b> tu correo y tu calendario.</li>
 </ul>
 
 </body>
