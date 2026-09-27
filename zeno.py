@@ -38,7 +38,10 @@ def cmd_pendientes() -> int:
     publican = sum(1 for p in lista if p.publica_algo)
     cuestan = sum(1 for p in lista if p.cuesta_dinero)
     huerfanas = sum(p.sin_contrato for p in lista)
-    print(f"  {len(lista)} cosas esperan tu OK · {publican} pueden salir al mundo · "
+    # Sin comillas anidadas dentro de la f-string: eso solo compila en Python 3.12 y este guion
+    # tambien se ejecuta en el servidor, donde la version puede ser otra.
+    cuantas = f"{len(lista)} cosas esperan" if len(lista) != 1 else "1 cosa espera"
+    print(f"  {cuantas} tu OK · {publican} pueden salir al mundo · "
           f"{cuestan} gastan API si las regeneras")
     if huerfanas:
         print(f"  OJO: {huerfanas} accion(es) sin contrato en el catalogo: Zeno no sabe que hacen")
@@ -56,32 +59,62 @@ def cmd_pendientes() -> int:
     return 0
 
 
-def _numero(d, *claves):
-    """Primer valor numerico que exista entre esas claves. Las tres fuentes no usan los mismos
-    nombres, y adivinar uno solo dejaria el resumen en blanco sin decir por que."""
-    for k in claves:
-        v = (d or {}).get(k)
-        if isinstance(v, (int, float)):
-            return v
-    return None
+def _kpis(negocio: dict) -> list[str]:
+    """Los KPIs de un negocio, con la alerta que ya trae el dato. `alerta` puede ser bad o warn, y lo
+    pone el cockpit: Zeno no decide que es preocupante, lo repite."""
+    fuera = []
+    for k in negocio.get("kpis") or []:
+        marca = {"bad": "  <-- MAL", "warn": "  <-- ojo"}.get(k.get("alerta"), "")
+        fuera.append(f"{k.get('k')}: {k.get('v')}{marca}")
+    return fuera
 
 
 def cmd_estado() -> int:
     datos, fallos = lector.estado()
     for f in fallos:
         print(f"  NO SE HA PODIDO LEER  {f}")
-    for etiqueta, d in datos.items():
-        if not isinstance(d, dict):
-            continue
-        print(f"\n  --- {etiqueta} ---")
-        # Se imprime lo que hay, sin inventar una forma comun que las tres fuentes no comparten.
-        for k, v in list(d.items())[:12]:
-            if isinstance(v, (int, float, str)) and str(v)[:1]:
-                print(f"      {k}: {str(v)[:70]}")
-            elif isinstance(v, list):
-                print(f"      {k}: {len(v)} elementos")
-            elif isinstance(v, dict):
-                print(f"      {k}: {', '.join(list(v)[:6])}")
+
+    # --- los dos negocios, del overview de AIOS ---
+    for negocio in (datos.get("zenvrax") or {}).get("negocios") or []:
+        print(f"\n  --- {negocio.get('nombre')} ({negocio.get('sub')}) ---")
+        lineas = _kpis(negocio)
+        if lineas:
+            for l in lineas:
+                print(f"      {l}")
+        elif negocio.get("nota"):
+            # Un negocio sin KPIs no es un negocio parado: el dato aun no esta conectado, y el
+            # propio cockpit lo explica. Repetir la nota es mas honesto que imprimir una lista vacia.
+            print(f"      {negocio['nota']}")
+        salud = negocio.get("salud") or {}
+        if salud:
+            print(f"      workflows: {salud.get('activos')} activos de {salud.get('total')}"
+                  f" · con error: {salud.get('errores')}")
+
+    # --- lo que Xrise cuenta de GutLyn y el cockpit no sabe ---
+    alertas = (datos.get("gutlyn") or {}).get("alerts") or []
+    encendidas = [a for a in alertas if a.get("value") and a.get("tone") != "ok"]
+    if alertas:
+        print(f"\n  --- GutLyn, del panel de Xrise · "
+              f"{len(encendidas)} de {len(alertas)} encendidas ---")
+        for a in encendidas:
+            print(f"      {a.get('label')}: {a.get('value')}")
+        if not encendidas:
+            print("      nada encendido")
+
+    # --- el plan del dia ---
+    plan = datos.get("plan_del_dia") or {}
+    foco = plan.get("focus") or {}
+    cuentas = plan.get("counts") or {}
+    if foco or cuentas:
+        print("\n  --- el plan de hoy ---")
+        if foco:
+            print(f"      lo primero: {(foco.get('title') or '')[:74]}")
+            if foco.get("body"):
+                print(f"                  {foco['body'][:74]}")
+        if cuentas:
+            print(f"      {cuentas.get('pending', 0)} pendientes · "
+                  f"{cuentas.get('urgent', 0)} urgentes · "
+                  f"{cuentas.get('done_today', 0)} hechas hoy")
     return 0
 
 
