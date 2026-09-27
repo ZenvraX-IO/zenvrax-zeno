@@ -716,6 +716,8 @@ async function pintaAgendaExtra() {
   caja.innerHTML =
     '<div class="nueva">' +
     '<input id="cita-titulo" placeholder="de qué es la cita" autocomplete="off">' +
+    '<input id="cita-con" placeholder="invitados, separados por coma (opcional)" ' +
+    'autocomplete="off" inputmode="email">' +
     '<div class="fila"><input id="cita-min" type="number" inputmode="numeric" value="30" ' +
     'min="10" max="480" aria-label="minutos"><button class="b primaria" id="cita-buscar">' +
     "Buscar hueco</button></div>" +
@@ -758,14 +760,18 @@ async function proponeCita(desde, minutos) {
   if (!titulo) { $("#cita-titulo").focus(); return; }
   const caja = $("#cita-propuesta");
   try {
+    // Los invitados se mandan como los ha escrito el operador; limpiarlos y comprobar que son
+    // correos lo hace el servidor, porque es lo que decide si SALE una invitacion.
+    const con = ($("#cita-con").value || "").split(",").map(x => x.trim()).filter(Boolean);
     const p = await api("/api/agenda/proponer", { method: "POST", body: JSON.stringify(
-      { titulo: titulo, desde: desde, minutos: minutos }) });
+      { titulo: titulo, desde: desde, minutos: minutos, con: con }) });
     propuestaViva = p;
     let h = '<div class="propuesta"><div class="q">' + esc(p.titulo) + "</div>" +
             '<div class="c">' + esc(p.cuando) + "</div>";
     // Lo que no se deshace se dice ANTES de confirmar, no despues.
     if (p.avisa_a_invitados)
-      h += '<div class="ojo">Se enviará invitación a ' + esc((p.con || []).join(", ")) + "</div>";
+      h += '<div class="ojo"><b>Se enviará invitación por correo a ' +
+           esc((p.con || []).join(", ")) + "</b>. Eso no se puede deshacer.</div>";
     if ((p.choca_con || []).length)
       h += '<div class="ojo">Ojo: ya tienes algo en ese rato</div>';
     h += '<div class="btns"><button class="b primaria" id="cita-crear">Crear en el calendario' +
@@ -792,6 +798,7 @@ async function creaCita() {
       (r.abrir ? '<a class="b" href="' + esc(r.abrir) + '" target="_blank" rel="noopener">' +
                  "Verla en el calendario</a>" : "") + "</div>";
     $("#cita-titulo").value = "";
+    $("#cita-con").value = "";
     cargaPersonal();
   } catch (e) {
     b.disabled = false; b.textContent = "Crear en el calendario";

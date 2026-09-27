@@ -233,3 +233,43 @@ def test_los_huecos_caen_en_hora_redonda(monkeypatch):
     _agenda(monkeypatch, [])
     for x in citas.huecos("zenvrax", minutos=30, dias=1, cuantos=4):
         assert datetime.fromisoformat(x["desde"]).minute in (0, 30), x["etiqueta"]
+
+
+# ---------------------------------------------------------------- los invitados salen al mundo
+
+def test_un_correo_mal_escrito_no_crea_la_cita(monkeypatch):
+    """Invitar SALE AL MUNDO: Google manda un correo a cada direccion de la lista. Una errata no da
+    error, crea la cita e invita a otra persona.
+
+    Importa mas con voz, que es para lo que el operador lo pidio: una direccion mal entendida es lo
+    normal, no la excepcion. Mejor que Zeno diga "no te he entendido el correo" a que invite a un
+    desconocido y el correo ya no se pueda recoger.
+    """
+    _agenda(monkeypatch, [])
+    _escritura_prohibida(monkeypatch)
+    cuando = (MIERCOLES + timedelta(hours=2)).isoformat()
+    for malo in ("alguien arroba cliente.com", "alguien@", "@cliente.com", "alguien@cliente",
+                 "uno@a.com dos@b.com"):
+        with pytest.raises(citas.NoSePuede) as e:
+            citas.propone("zenvrax", "Reunion", cuando, con=[malo])
+        assert "no parece un correo" in str(e.value)
+
+
+def test_los_invitados_se_limpian_y_no_se_repiten(monkeypatch):
+    """Dictado o copiado, un correo llega con corchetes, con una coma pegada o dos veces. Invitar
+    dos veces al mismo manda dos correos."""
+    _agenda(monkeypatch, [])
+    p = citas.propone("zenvrax", "Reunion", (MIERCOLES + timedelta(hours=2)).isoformat(),
+                      con=[" <uno@cliente.com> ", "uno@cliente.com,", "UNO@cliente.com", "",
+                           "dos@cliente.com."])
+    assert p["con"] == ["uno@cliente.com", "dos@cliente.com"]
+
+
+def test_con_invitados_la_propuesta_avisa_antes_de_confirmar(monkeypatch):
+    """Ya estaba, pero ahora que el campo existe en la pantalla es la unica barrera entre escribir
+    un correo y que le llegue la invitacion."""
+    _agenda(monkeypatch, [])
+    p = citas.propone("zenvrax", "Reunion", (MIERCOLES + timedelta(hours=2)).isoformat(),
+                      con=["alguien@cliente.com"])
+    assert p["avisa_a_invitados"] is True
+    assert p["con"] == ["alguien@cliente.com"]

@@ -26,6 +26,7 @@ LO QUE MIRA PARA PROPONER, y por qué así:
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import time
 import urllib.parse
@@ -217,7 +218,7 @@ def propone(negocio: str, titulo: str, desde: str, minutos: int = DURACION_POR_D
     if cuando < _ahora():
         raise NoSePuede("esa hora ya ha pasado")
 
-    invitados = [c.strip() for c in (con or []) if c.strip()]
+    invitados = _revisa_invitados(con or [])
     vale = secrets.token_urlsafe(18)
     ahora = time.time()
     for v, d in list(_PROPUESTAS.items()):
@@ -235,6 +236,31 @@ def propone(negocio: str, titulo: str, desde: str, minutos: int = DURACION_POR_D
         "avisa_a_invitados": bool(invitados),
         "choca_con": [c["uno"] for c in _choca_aqui(negocio, cuando, minutos)],
     }
+
+
+#: Una direccion de correo, comprobada sin pretensiones: hay arroba, hay algo a cada lado y hay un
+#: punto en el dominio. No valida que exista, valida que no sea una errata evidente.
+_CORREO = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[A-Za-z]{2,}$")
+
+
+def _revisa_invitados(con: list[str]) -> list[str]:
+    """Los invitados, limpios, o NoSePuede con el que esta mal escrito.
+
+    Se revisa porque invitar sale al mundo: Google manda un correo a cada direccion de la lista. Una
+    errata no da error, crea la cita y manda la invitacion a otro sitio. Y esto importa mas cuando
+    la cita se dicte por voz, donde una direccion mal entendida es lo normal, no la excepcion: mejor
+    que Zeno diga "no te he entendido el correo" a que invite a un desconocido.
+    """
+    fuera = []
+    for c in con:
+        c = c.strip().strip("<>").rstrip(".,;")
+        if not c:
+            continue
+        if not _CORREO.match(c):
+            raise NoSePuede(f"esto no parece un correo: {c}")
+        if c.lower() not in [x.lower() for x in fuera]:
+            fuera.append(c)
+    return fuera
 
 
 def _choca_aqui(negocio: str, cuando: datetime, minutos: int) -> list[dict]:
