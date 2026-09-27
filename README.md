@@ -110,3 +110,36 @@ pendiente el icono, que lo elige el operador.
 **J4: el correo y el calendario.** Hoy Zeno lee los dos sistemas, no la bandeja. Serán **dos
 autorizaciones OAuth separadas**, una por cuenta de Google, porque las cuentas del operador ya están
 separadas por negocio: así la frontera la sostiene Google y no un `if` en el código.
+
+## Desplegar
+
+```bash
+# en el servidor
+cd /home/zenvrax-io && git pull
+cd lab/zeno && docker compose -p zeno --env-file /home/zenvrax-io/.env \
+    -f infra/docker-compose.zeno.yml up -d --build
+```
+
+**Si tocas el Caddyfile, ojo con una trampa que costó media hora el 27-sep.** Caddy monta el
+Caddyfile como FICHERO, por su inodo, y `git pull` lo reemplaza: el contenedor sigue leyendo el
+viejo, y `caddy validate` y `caddy reload` **dan verde** sobre la configuración antigua. Hay que
+escribir dentro del fichero montado:
+
+```bash
+docker exec -i zenvrax-io-caddy-1 sh -c 'cat > /etc/caddy/Caddyfile' \
+    < /home/zenvrax-io/infrastructure/caddy/Caddyfile
+docker exec zenvrax-io-caddy-1 caddy reload --config /etc/caddy/Caddyfile
+```
+
+Y comprobarlo, que es lo que lo caza en dos segundos:
+
+```bash
+diff <(cat /home/zenvrax-io/infrastructure/caddy/Caddyfile) \
+     <(docker exec zenvrax-io-caddy-1 cat /etc/caddy/Caddyfile) && echo "el mismo"
+```
+
+## El DNS
+
+`zeno.zenvrax.com` es un registro **A a 204.168.214.188 con el proxy de Cloudflare DESACTIVADO**,
+igual que `xrise`, `aios` y `cockpit`. El comodín `*.zenvrax.com` apunta a Vercel con proxy, así que
+sin registro propio el dominio daba **525** y Caddy no podía emitir el certificado.
