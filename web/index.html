@@ -120,6 +120,39 @@
        padding:9px 14px;font-size:13.5px;color:var(--texto)}
   .degradado{color:#f3c579;font-size:12.5px;margin-bottom:10px}
 
+  /* PERSONAL. Cada correo y cada cita es un enlace que abre en Gmail o en Calendar: Zeno ENSEÑA, y
+     el trabajo se sigue haciendo donde ya se hace. Por eso son bloques tocables, no filas de tabla. */
+  .cuenta{background:var(--carbon);border:1px solid var(--linea);border-radius:11px;
+          padding:11px 12px;margin-bottom:9px;display:flex;gap:10px;align-items:center}
+  .cuenta .c{flex:1;min-width:0}
+  .cuenta .c b{display:block;font-size:13.5px;font-weight:600;overflow:hidden;
+                text-overflow:ellipsis;white-space:nowrap}
+  .cuenta .c span{color:var(--gris);font-size:11.5px}
+  .punto{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:#4a4a54}
+  .punto.si{background:#4fbf87}
+  .apartado{font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:var(--gris);
+            margin:20px 0 10px}
+  .correo{display:block;text-decoration:none;color:inherit;background:var(--carbon);
+          border:1px solid var(--linea);border-radius:11px;padding:11px 12px;margin-bottom:9px;
+          min-height:44px}
+  .correo:active{background:#1e1e24}
+  .correo .de{display:flex;gap:8px;align-items:baseline;margin-bottom:4px}
+  .correo .de b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;
+                white-space:nowrap;flex:1;min-width:0}
+  .correo .de i{font-style:normal;font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;
+                color:var(--gris);flex:0 0 auto}
+  .correo .as{font-size:14.5px;line-height:1.35;margin-bottom:4px}
+  .correo .re{color:var(--gris);font-size:12.5px;line-height:1.4;
+              display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .cita{display:flex;gap:11px;text-decoration:none;color:inherit;background:var(--carbon);
+        border:1px solid var(--linea);border-left:3px solid var(--ambar);border-radius:11px;
+        padding:11px 12px;margin-bottom:9px;min-height:44px}
+  .cita .h{font-size:13px;font-weight:600;color:var(--ambar);flex:0 0 52px;
+           font-variant-numeric:tabular-nums}
+  .cita .d{flex:1;min-width:0}
+  .cita .d b{display:block;font-size:14.5px;font-weight:600;line-height:1.3}
+  .cita .d span{color:var(--gris);font-size:11.5px}
+
   .login{max-width:360px;margin:0 auto;padding:50px 4px}
   .login .marca{width:54px;height:54px;border-radius:14px;margin:0 auto 18px}
   .login .marca i::before,.login .marca i::after{left:10px;right:10px;height:8px}
@@ -167,6 +200,7 @@
   <main>
     <div id="tiron"><span class="rueda"></span><span id="tiron-texto"></span></div>
     <section id="v-pendientes"></section>
+    <section id="v-personal" hidden></section>
     <section id="v-chat" hidden>
       <div id="burbujas" class="burbujas"></div>
     </section>
@@ -188,6 +222,7 @@
 
   <nav class="pie">
     <button data-vista="pendientes" class="on">Pendiente</button>
+    <button data-vista="personal">Personal</button>
     <button data-vista="chat">Chat</button>
     <button data-vista="buscar">Buscar</button>
   </nav>
@@ -402,14 +437,134 @@ function cargaChat() {
                   "documentación. Todavía no puedo ejecutar nada: te digo dónde está el botón.");
 }
 
+// ---------------------------------------------------------------- correo y agenda
+//
+// Zeno ENSEÑA el correo, no lo trabaja: cada correo y cada cita es un enlace que abre en Gmail o en
+// Calendar, que es donde el operador ya trabaja y donde puede responder. Con los permisos de hoy
+// Zeno no podría responder ni archivar aunque el boton existiera.
+
+function horaCorta(txt, todoElDia) {
+  if (!txt) return "";
+  const d = new Date(txt);
+  if (isNaN(d)) return "";
+  const hoy = new Date();
+  const mismoDia = d.toDateString() === hoy.toDateString();
+  if (todoElDia) return mismoDia ? "hoy" : d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
+  const hora = d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+  return mismoDia ? hora : d.toLocaleDateString("es-ES", { day: "numeric", month: "short" }) + " " + hora;
+}
+
+function soloNombre(de) {
+  // "Gustavo <g@x.com>" -> "Gustavo". Si no hay nombre, se queda el correo, que ya identifica.
+  const t = String(de || "").trim();
+  const corte = t.indexOf("<");
+  const nombre = corte > 0 ? t.slice(0, corte).trim() : t;
+  return (nombre.replace(/^"|"$/g, "") || t).trim() || "(sin remitente)";
+}
+
+async function conectaCuenta(negocio, boton) {
+  boton.disabled = true;
+  boton.textContent = "abriendo Google…";
+  try {
+    const d = await api("/api/google/conectar?negocio=" + encodeURIComponent(negocio),
+                        { method: "POST" });
+    // Se navega en la MISMA pestaña: en una PWA instalada una ventana nueva se abre fuera de la
+    // aplicacion y la vuelta de Google se queda en un Safari suelto.
+    location.href = d.enlace;
+  } catch (e) {
+    boton.disabled = false;
+    boton.textContent = "Conectar";
+    alert(e.message);
+  }
+}
+
+function pintaCuentas(cuentas) {
+  let h = "";
+  for (const c of cuentas) {
+    const pendiente = !c.conectada;
+    h += '<div class="cuenta"><span class="punto' + (c.conectada ? " si" : "") + '"></span>' +
+         '<div class="c"><b>' + esc(c.cuenta) + '</b><span>' +
+         (c.conectada ? "solo lectura" : c.configurada ? "sin conectar" : "falta configurarla") +
+         "</span></div>";
+    if (pendiente && c.configurada)
+      h += '<button class="b primaria" data-conectar="' + esc(c.negocio) + '">Conectar</button>';
+    else if (c.conectada)
+      h += '<button class="b sin" data-olvidar="' + esc(c.negocio) + '">Quitar</button>';
+    h += "</div>";
+  }
+  return h;
+}
+
+async function cargaPersonal() {
+  const c = $("#v-personal");
+  c.innerHTML = '<div class="vacio">cargando…</div>';
+  let cuentas = [], datos = { correos: [], agenda: [], fallos: [] };
+  try {
+    const r = await Promise.all([api("/api/google/cuentas"), api("/api/personal")]);
+    cuentas = r[0].cuentas || [];
+    datos = r[1];
+  } catch (e) {
+    c.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+    return;
+  }
+
+  let html = pintaCuentas(cuentas);
+  // Los fallos van arriba y siempre, por lo mismo que en pendiente: una bandeja corta sin aviso se
+  // lee como "tengo poco correo" cuando la verdad puede ser "falta una cuenta entera".
+  for (const f of datos.fallos || [])
+    html += '<div class="aviso-fallo">' + esc(f) + "</div>";
+
+  if (!cuentas.some(x => x.conectada)) {
+    html += '<div class="vacio">Conecta una cuenta y aquí verás el correo sin leer' +
+            "<br>y las citas de los próximos días.</div>";
+    c.innerHTML = html;
+    enchufaBotonesDeCuenta(c);
+    return;
+  }
+
+  const agenda = datos.agenda || [];
+  html += '<div class="apartado">Próximas citas</div>';
+  if (!agenda.length) html += '<div class="vacio">nada en los próximos días</div>';
+  for (const a of agenda)
+    html += '<a class="cita" href="' + esc(a.abrir) + '" target="_blank" rel="noopener">' +
+            '<span class="h">' + esc(horaCorta(a.cuando, a.todo_el_dia)) + "</span>" +
+            '<span class="d"><b>' + esc(a.titulo) + "</b><span>" + esc(a.negocio) +
+            (a.con && a.con.length ? " · " + a.con.length + " personas" : "") + "</span></span></a>";
+
+  const correos = datos.correos || [];
+  html += '<div class="apartado">Sin leer · ' + correos.length + "</div>";
+  if (!correos.length) html += '<div class="vacio">bandeja limpia</div>';
+  for (const m of correos)
+    html += '<a class="correo" href="' + esc(m.abrir) + '" target="_blank" rel="noopener">' +
+            '<span class="de"><b>' + esc(soloNombre(m.de)) + "</b><i>" + esc(m.negocio) + " · " +
+            esc(horaCorta(m.fecha)) + "</i></span>" +
+            '<div class="as">' + esc(m.asunto) + "</div>" +
+            '<div class="re">' + esc(m.resumen) + "</div></a>";
+
+  c.innerHTML = html;
+  enchufaBotonesDeCuenta(c);
+}
+
+function enchufaBotonesDeCuenta(c) {
+  c.querySelectorAll("[data-conectar]").forEach(b =>
+    b.onclick = () => conectaCuenta(b.dataset.conectar, b));
+  c.querySelectorAll("[data-olvidar]").forEach(b => b.onclick = async () => {
+    if (!confirm("Quitar el permiso de esta cuenta? La otra no se toca.")) return;
+    await api("/api/google/olvidar?negocio=" + encodeURIComponent(b.dataset.olvidar),
+              { method: "POST" });
+    cargaPersonal();
+  });
+}
+
 // ---------------------------------------------------------------- navegar
-const TITULOS = { pendientes: "Zeno", chat: "Chat", buscar: "Buscar" };
+const TITULOS = { pendientes: "Zeno", personal: "Correo y agenda", chat: "Chat", buscar: "Buscar" };
 function ver(vista) {
-  for (const v of ["pendientes", "chat", "buscar"]) $("#v-" + v).hidden = v !== vista;
+  for (const v of ["pendientes", "personal", "chat", "buscar"]) $("#v-" + v).hidden = v !== vista;
   document.querySelectorAll(".pie button").forEach(b =>
     b.classList.toggle("on", b.dataset.vista === vista));
   $("#titulo").textContent = TITULOS[vista];
   if (vista === "pendientes") cargaPendientes();
+  if (vista === "personal") cargaPersonal();
   if (vista === "chat") { cargaChat(); $("#pregunta").focus(); }
   if (vista === "buscar") {
     if (!$("#resultados").innerHTML) $("#resultados").innerHTML = sugerencias();
@@ -440,6 +595,7 @@ function alturaTiron(px, texto, clase) {
 function recargaVista() {
   const actual = document.querySelector(".pie button.on")?.dataset.vista || "pendientes";
   if (actual === "buscar") return busca();
+  if (actual === "personal") return cargaPersonal();
   if (actual === "chat") return;          // recargar un chat seria borrar la conversacion
   return cargaPendientes();
 }

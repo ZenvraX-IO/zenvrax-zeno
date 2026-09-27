@@ -64,8 +64,50 @@ def test_no_hay_ningun_endpoint_que_ejecute_una_accion():
             f = d.func if isinstance(d, ast.Call) else d
             if isinstance(f, ast.Attribute) and f.attr in ("post", "put", "patch", "delete"):
                 posts.append(n.name)
-    assert sorted(posts) == ["chat", "login", "login_2fa", "salir"], (
+    # La lista es cerrada a propósito: para añadir un POST hay que venir aquí y escribir por qué, y
+    # así un endpoint que dispare una acción no puede colarse sin que nadie lo lea.
+    permitidos = [
+        "chat",              # gasta API, y nace apagado
+        "google_conectar",   # devuelve la dirección de Google; no toca ni una cola
+        "google_olvidar",    # retira un permiso de Google; solo quita, nunca ejecuta
+        "login", "login_2fa", "salir",
+    ]
+    assert sorted(posts) == sorted(permitidos), (
         f"endpoints que escriben y no deberían existir todavía: {sorted(posts)}")
+
+
+def test_ningun_endpoint_llama_al_catalogo_ni_dispara_una_accion():
+    """El guardián de arriba mira los VERBOS, y eso dejó de bastar al aparecer los POST de Google.
+
+    Lo que de verdad no puede pasar es que el servicio ejecute una acción de las colas, y eso se
+    reconoce por a quién llama, no por si es POST: un webhook de aprobación de n8n se dispara con un
+    GET (ver la regla del enlace que publica). Así que aquí se mira que nadie llame a nada que
+    ejecute, con cualquier verbo.
+    """
+    arbol = ast.parse((RAIZ / "servicio" / "api.py").read_text(encoding="utf-8"))
+
+    def nombre(n):
+        """El nombre con puntos de lo que se llama: `google.pide`, `urlopen`, `sesion.entrar`."""
+        if isinstance(n, ast.Name):
+            return n.id
+        if isinstance(n, ast.Attribute):
+            return (nombre(n.value) + "." if nombre(n.value) else "") + n.attr
+        return ""
+
+    llamadas = {nombre(n.func) for n in ast.walk(arbol) if isinstance(n, ast.Call)}
+    # Se mira lo que se LLAMA, no el texto del fichero: los comentarios de este módulo hablan de no
+    # ejecutar acciones, y buscar la palabra suelta haría saltar el guardián por su propia
+    # documentación.
+    for mala in ("urlopen", "requests.post", "requests.get", "httpx.post", "httpx.put",
+                 "httpx.delete", "catalogo.ejecuta", "ejecutor.ejecuta"):
+        assert mala not in llamadas, (
+            f"api.py llama a {mala!r}: el servicio no sale a ejecutar nada, solo lee por sus módulos")
+    # Y de los módulos de Google, solo lo que lee o gestiona el permiso. Cualquier otra función
+    # nueva de `google` tiene que pasar por aquí antes de ser alcanzable desde la web.
+    de_google = {c for c in llamadas if c.startswith("google.")}
+    assert de_google <= {"google.conectadas", "google._cliente", "google.enlace_para_autorizar",
+                         "google.guarda_permiso", "google.olvida", "google.CUENTAS.items"}, (
+        f"api.py expone de google algo no previsto: {de_google}")
 
 
 def test_el_chat_nace_apagado_porque_gasta_dinero():
@@ -282,3 +324,88 @@ def test_responde_le_pasa_de_verdad_el_estado_al_contexto():
     fuente = inspect.getsource(m.responde)
     assert "_contexto(pendientes, colas, fallos, documentos, estado, ventas)" in fuente, (
         "responde() recibe el estado y no se lo pasa al contexto: el chat se queda ciego")
+
+
+# ---------------------------------------------------------------- la vuelta de Google
+
+def test_la_vuelta_de_google_sin_vale_no_ata_ninguna_cuenta(monkeypatch):
+    """EL TEST QUE IMPORTA de esta tanda. La vuelta de Google llega por el navegador, o sea SIN la
+    cabecera del token, así que es el único endpoint sin sesión de todo el servicio.
+
+    Si aceptara cualquier `state`, cualquiera que conociera la dirección podría atar su propia cuenta
+    de Google al Zeno del operador, y a partir de ahí Zeno leería el correo de un desconocido y lo
+    enseñaría como si fuera suyo. Lo que lo impide es el vale de un solo uso que se apunta al empezar
+    desde dentro.
+    """
+    llamadas = []
+    monkeypatch.setattr(api_mod.google, "guarda_permiso",
+                        lambda n, c: llamadas.append((n, c)) or {"cuenta": "x"})
+    r = cliente.get("/api/google/vuelta?code=robado&state=inventado")
+    assert r.status_code == 400
+    assert not llamadas, "se ha intentado guardar un permiso sin haber empezado desde Zeno"
+
+
+def test_un_vale_sirve_una_sola_vez(monkeypatch):
+    """Reutilizar el vale sería poder repetir la vuelta: el segundo intento tiene que caer."""
+    monkeypatch.setattr(api_mod.google, "guarda_permiso",
+                        lambda n, c: {"cuenta": api_mod.google.CUENTAS[n]})
+    vale = api_mod._vale_nuevo("zenvrax")
+    assert cliente.get(f"/api/google/vuelta?code=c&state={vale}").status_code == 200
+    assert cliente.get(f"/api/google/vuelta?code=c&state={vale}").status_code == 400
+
+
+def test_un_vale_caducado_no_vale(monkeypatch):
+    monkeypatch.setattr(api_mod.google, "guarda_permiso", lambda n, c: {"cuenta": "x"})
+    vale = api_mod._vale_nuevo("zenvrax")
+    api_mod._VALES[vale] = ("zenvrax", 0.0)          # nacido en 1970
+    assert cliente.get(f"/api/google/vuelta?code=c&state={vale}").status_code == 400
+
+
+def test_si_google_dice_que_no_se_enseña_el_motivo_y_no_se_guarda_nada(monkeypatch):
+    monkeypatch.setattr(api_mod.google, "guarda_permiso",
+                        lambda n, c: pytest.fail("no se puede guardar nada si Google dijo que no"))
+    r = cliente.get("/api/google/vuelta?error=access_denied")
+    assert r.status_code == 200 and "access_denied" in r.text
+
+
+def test_las_cuentas_dicen_si_les_falta_el_cliente(monkeypatch):
+    """Sin cliente OAuth el botón no puede funcionar. Enseñarlo igual sería mandar al operador a
+    comerse un error de Google sin saber por qué."""
+    monkeypatch.setattr(api_mod.google, "conectadas", lambda: {})
+    monkeypatch.setattr(api_mod.google, "_cliente", lambda n: ("", ""))
+    d = cliente.get("/api/google/cuentas", headers=CABECERA).json()
+    assert len(d["cuentas"]) == 2
+    assert all(c["configurada"] is False and c["conectada"] is False for c in d["cuentas"])
+
+
+def test_conectar_una_cuenta_que_no_existe_da_404():
+    assert cliente.post("/api/google/conectar?negocio=acme",
+                        headers=CABECERA).status_code == 404
+
+
+def test_el_enlace_de_conectar_lleva_el_vale(monkeypatch):
+    monkeypatch.setattr(api_mod.google, "enlace_para_autorizar", lambda n: "https://g/?x=1")
+    d = cliente.post("/api/google/conectar?negocio=gutlyn", headers=CABECERA).json()
+    assert "state=" in d["enlace"]
+    vale = d["enlace"].split("state=")[1]
+    assert api_mod._VALES[vale][0] == "gutlyn", "el vale tiene que recordar de qué cuenta era"
+
+
+def test_lo_personal_necesita_sesion(monkeypatch):
+    """Es correo personal: es el endpoint del servicio donde una fuga duele mas. La fixture de este
+    fichero da por buena cualquier sesion, asi que aqui se devuelve la de verdad para comprobar que
+    el endpoint la pide."""
+    def no(token, ahora=None):
+        raise sesion.NoAutenticado("sin token")
+    monkeypatch.setattr(sesion, "quien_es", no)
+    assert cliente.get("/api/personal").status_code == 401
+
+
+def test_lo_personal_lleva_los_fallos_aunque_haya_correo(monkeypatch):
+    """Mismo motivo que en pendientes: una bandeja corta sin aviso se lee como "tengo poco correo"
+    cuando la verdad puede ser "falta una cuenta entera"."""
+    monkeypatch.setattr(api_mod.personal, "bandeja",
+                        lambda: ({"correos": [{"asunto": "uno"}], "agenda": [], "cuentas": {}},
+                                 ["ghidalgo@gutlyn.com: sin conectar todavia"]))
+    d = cliente.get("/api/personal", headers=CABECERA).json()
+    assert len(d["correos"]) == 1 and d["fallos"]

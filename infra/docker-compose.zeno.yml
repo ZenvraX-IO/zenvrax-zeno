@@ -3,9 +3,11 @@
 # Va en la red `zenvrax-io_zenvrax` porque habla con el cockpit por dentro (cockpit-api:8802) en vez
 # de salir a internet y volver: menos latencia y el token no da la vuelta por fuera.
 #
-# NO tiene base de datos. Es una fachada: lee las dos APIs y no guarda nada suyo. Si algun dia
-# necesita guardar algo, eso es una decision nueva y se discute, porque un tercer sitio con estado
-# es la tercera verdad que la arquitectura evita a proposito.
+# NO tiene base de datos. Es una fachada: lee las dos APIs y no guarda nada suyo. La UNICA excepcion
+# es el volumen `zeno-datos`, donde vive el permiso cifrado de Google, y es una excepcion obligada:
+# un permiso que no persiste obliga a reautorizar las dos cuentas en cada reinicio. Son credenciales,
+# no datos de negocio, asi que no crean la tercera verdad que esta arquitectura evita: los correos se
+# leen y se olvidan, no se guardan.
 
 services:
   zeno-api:
@@ -31,6 +33,26 @@ services:
       ZENO_MODELO: ${ZENO_MODELO:-claude-haiku-4-5}
       ZENO_TOPE_PREGUNTAS: ${ZENO_TOPE_PREGUNTAS:-60}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      # LAS DOS CUENTAS DE GOOGLE. Un cliente OAuth por cuenta: los dos dominios tienen Workspace y
+      # son dominios distintos, asi que cada uno puede ser una aplicacion INTERNA en su organizacion,
+      # sin verificacion de Google y sin que el permiso caduque cada 7 dias. Si las dos estan en la
+      # misma organizacion, basta el par comun de abajo.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID_ZENVRAX: ${GOOGLE_CLIENT_ID_ZENVRAX:-}
+      GOOGLE_CLIENT_SECRET_ZENVRAX: ${GOOGLE_CLIENT_SECRET_ZENVRAX:-}
+      GOOGLE_CLIENT_ID_GUTLYN: ${GOOGLE_CLIENT_ID_GUTLYN:-}
+      GOOGLE_CLIENT_SECRET_GUTLYN: ${GOOGLE_CLIENT_SECRET_GUTLYN:-}
+      # Hasta donde llegan los permisos: leer | borrador | escribir. Se queda en LEER hasta que el
+      # operador apruebe el salto, porque `escribir` incluye mandar correo en su nombre.
+      ZENO_TRAMO: ${ZENO_TRAMO:-leer}
+      # Con que se cifra el permiso en disco. Sin esta clave, Zeno no guarda nada y lo dice.
+      ZENO_COFRE_KEY: ${ZENO_COFRE_KEY}
+      ZENO_COFRE: /datos/google.cofre
+      # Tiene que coincidir CARACTER A CARACTER con el URI de redireccion del cliente en Google.
+      ZENO_URL_PUBLICA: ${ZENO_URL_PUBLICA:-https://zeno.zenvrax.com}
+    volumes:
+      - zeno-datos:/datos
     networks: [zenvrax]
     healthcheck:
       test: ["CMD", "python", "-c",
@@ -39,6 +61,9 @@ services:
       timeout: 6s
       retries: 3
       start_period: 15s
+
+volumes:
+  zeno-datos:
 
 networks:
   zenvrax:
