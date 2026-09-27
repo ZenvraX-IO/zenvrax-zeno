@@ -35,7 +35,7 @@ sys.path.insert(0, str(RAIZ))
 
 import lector                                    # noqa: E402
 from servicio import (avisos, chat as chat_mod, citas, clave as clave_mod,  # noqa: E402
-                      empuje, google, personal, ronda, sesion)
+                      ejecutor, empuje, google, personal, ronda, sesion)
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -120,7 +120,11 @@ async def login_2fa(body: Segundo):
 async def salir(authorization: str = Header(default="")):
     """Tira la caché de este token. La sesión de verdad la cierra el cockpit."""
     if authorization.lower().startswith("bearer "):
-        sesion.olvidar(authorization.split(" ", 1)[1])
+        token = authorization.split(" ", 1)[1]
+        sesion.olvidar(token)
+        # Salir cierra tambien la ventana del PIN: si no, volver a entrar con la clave heredaria el
+        # permiso de publicar de la sesion anterior.
+        clave_mod.cierra_pin(_huella(token))
     return {"ok": True}
 
 
@@ -301,6 +305,72 @@ async def api_negocios(authorization: str = Header(default="")):
     _quien(authorization)
     lista, fallos = lector.negocios()
     return {"negocios": lista, "fallos": fallos}
+
+
+# ---------------------------------------------------------------- J4: ejecutar una accion
+
+class AccionPropuesta(BaseModel):
+    op: str
+    etiqueta: str
+    url: str
+    efecto: str
+    coste_api: bool = False
+    titulo: str = ""
+
+
+class Pin(BaseModel):
+    pin: str
+
+
+def _huella(token: str) -> str:
+    """Identifica la sesion sin guardar el token. La ventana del PIN va por sesion, no global: un
+    navegador olvidado abierto no puede dejar publicar desde otro sitio."""
+    import hashlib                                        # noqa: PLC0415
+    return hashlib.sha256(token.encode()).hexdigest()[:24]
+
+
+@app.post("/api/pin")
+async def pin_abrir(body: Pin, authorization: str = Header(default="")):
+    """Abre la ventana para lo que publica. Diez minutos y solo para esta sesion."""
+    _, token = _quien(authorization)
+    try:
+        hasta = clave_mod.abre_con_pin(_huella(token), body.pin)
+    except clave_mod.ClaveNoConfigurada as e:
+        raise HTTPException(503, str(e)) from e
+    except clave_mod.PinMalo as e:
+        raise HTTPException(401, str(e)) from e
+    return {"abierto": True, "segundos": int(hasta - time.time())}
+
+
+@app.get("/api/pin")
+async def pin_estado(authorization: str = Header(default="")):
+    _, token = _quien(authorization)
+    return {"hay_pin": clave_mod.hay_pin(), "abierto": clave_mod.pin_abierto(_huella(token))}
+
+
+@app.post("/api/accion/proponer")
+async def accion_proponer(body: AccionPropuesta, authorization: str = Header(default="")):
+    """Prepara la ejecucion y devuelve un vale. NO llama a nadie todavia."""
+    _quien(authorization)
+    try:
+        return ejecutor.propone(body.op, body.etiqueta, body.url, body.efecto,
+                                body.coste_api, body.titulo)
+    except ejecutor.NoSePuede as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@app.post("/api/accion/confirmar")
+async def accion_confirmar(body: Vale, authorization: str = Header(default="")):
+    """LO UNICO que ejecuta. Cierra J4, y es lo que puede publicar en nombre del operador."""
+    _, token = _quien(authorization)
+    try:
+        return ejecutor.confirma(body.vale, clave_mod.pin_abierto(_huella(token)))
+    except ejecutor.HaceFaltaPin as e:
+        # 428 y no 401: la sesion es buena, lo que falta es el PIN. Con 401 el front borraria el
+        # token y echaria al operador fuera en mitad de una aprobacion.
+        raise HTTPException(428, str(e)) from e
+    except ejecutor.NoSePuede as e:
+        raise HTTPException(409, str(e)) from e
 
 
 # ---------------------------------------------------------------- la documentación

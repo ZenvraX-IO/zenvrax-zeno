@@ -244,3 +244,81 @@ def test_el_coste_del_scrypt_cabe_en_el_limite_de_openssl():
         f"scrypt pide {pide // 1024 // 1024} MB y el tope declarado son "
         f"{clave_mod._MAXMEM // 1024 // 1024} MB")
     assert clave_mod.cifra_clave("x").startswith("scrypt$"), "y de verdad se puede cifrar"
+
+
+# ---------------------------------------------------------------- la segunda llave
+
+_PIN = "4821"
+_PIN_HASH = clave_mod.cifra_clave(_PIN)
+
+
+@pytest.fixture
+def _con_pin(monkeypatch):
+    monkeypatch.setattr(clave_mod, "PIN_HASH", _PIN_HASH)
+    clave_mod._fallos_pin.clear()
+    clave_mod._abierto.clear()
+    yield
+    clave_mod._fallos_pin.clear()
+    clave_mod._abierto.clear()
+
+
+def test_el_candado_se_mueve_de_sitio_en_vez_de_volver_a_la_puerta(_con_pin):
+    """LA DECISION DE DISEÑO, escrita como test. Al llegar J4, entrar en Zeno pasa a significar
+    poder publicar en nombre del operador, y eso pide mas seguridad. La salida facil seria pedir
+    segundo factor AL ENTRAR, y seria la equivocada: es justo la friccion que el operador quito
+    porque le impedia usar Zeno.
+
+    Asi que consultar cuesta lo mismo que antes y publicar cuesta cuatro digitos. Se comprueba que
+    entrar con la clave NO abre el PIN: si lo abriera, la segunda llave no existiria.
+    """
+    clave_mod.entrar(LA_CLAVE, "yo@zenvrax.com")
+    assert clave_mod.pin_abierto("una-sesion") is False
+
+
+def test_el_pin_bueno_abre_una_ventana_y_el_malo_no(_con_pin):
+    assert clave_mod.pin_abierto("s1") is False
+    clave_mod.abre_con_pin("s1", _PIN, ahora=1000.0)
+    assert clave_mod.pin_abierto("s1", ahora=1000.0) is True
+    with pytest.raises(clave_mod.PinMalo):
+        clave_mod.abre_con_pin("s1", "0000", ahora=1000.0)
+
+
+def test_la_ventana_se_cierra_sola(_con_pin):
+    """Aprobar ocho posts seguidos no puede pedir ocho veces el PIN, y dejarlo abierto toda la
+    sesion lo convertiria en un adorno."""
+    clave_mod.abre_con_pin("s1", _PIN, ahora=1000.0)
+    assert clave_mod.pin_abierto("s1", ahora=1000.0 + clave_mod.GRACIA - 10) is True
+    assert clave_mod.pin_abierto("s1", ahora=1000.0 + clave_mod.GRACIA + 10) is False
+
+
+def test_una_sesion_no_abre_la_ventana_de_otra(_con_pin):
+    """Si la ventana fuera global, un navegador olvidado abierto en el ordenador dejaria publicar
+    desde cualquier otro sitio."""
+    clave_mod.abre_con_pin("s1", _PIN, ahora=1000.0)
+    assert clave_mod.pin_abierto("s2", ahora=1000.0) is False
+
+
+def test_el_pin_tiene_freno_y_mas_apretado_que_la_clave(_con_pin):
+    """Cuatro digitos son diez mil combinaciones: sin freno se prueban en un rato, asi que el tope
+    es mas bajo que el de la clave larga."""
+    assert clave_mod.TOPE_PIN < clave_mod.TOPE_FALLOS
+    for _ in range(clave_mod.TOPE_PIN):
+        with pytest.raises(clave_mod.PinMalo):
+            clave_mod.abre_con_pin("s1", "0000", ahora=1000.0)
+    with pytest.raises(clave_mod.PinMalo) as e:
+        clave_mod.abre_con_pin("s1", _PIN, ahora=1000.0)
+    assert "intentos" in str(e.value), "ni el bueno entra mientras dura el castigo"
+
+
+def test_sin_pin_configurado_se_dice_y_no_se_abre(monkeypatch):
+    """El fallo peor seria que "no hay PIN puesto" se leyera como "no hace falta PIN"."""
+    monkeypatch.setattr(clave_mod, "PIN_HASH", "")
+    assert clave_mod.hay_pin() is False
+    with pytest.raises(clave_mod.ClaveNoConfigurada):
+        clave_mod.abre_con_pin("s1", "4821")
+
+
+def test_salir_cierra_la_ventana(_con_pin):
+    clave_mod.abre_con_pin("s1", _PIN, ahora=1000.0)
+    clave_mod.cierra_pin("s1")
+    assert clave_mod.pin_abierto("s1", ahora=1000.0) is False

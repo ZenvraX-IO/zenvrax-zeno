@@ -61,6 +61,16 @@ services:
       # seis cifras, varias veces al dia desde el movil: una puerta que cuesta cruzar se deja de
       # cruzar. La del cockpit sigue funcionando; esta se suma. Vacio = solo la del cockpit.
       ZENO_CLAVE_HASH: ${ZENO_CLAVE_HASH:-}
+      # LA SEGUNDA LLAVE, solo para lo que publica. Entrar sigue siendo una clave porque detras se
+      # LEE; desde J4, aprobar un post lo publica en nombre del operador, y eso pide cuatro digitos
+      # mas. El candado se mueve de sitio en vez de volver a la puerta, que es la friccion que ya se
+      # quito por hacer que Zeno no se usara.
+      ZENO_PIN_HASH: ${ZENO_PIN_HASH:-}
+      ZENO_PIN_GRACIA: ${ZENO_PIN_GRACIA:-600}
+      # A quien se le permite llamar al ejecutar. Una url que no empiece por una de estas no se
+      # dispara aunque traiga contrato: la url llega por la API de otro sistema, o sea es un dato
+      # de fuera, y un dato de fuera no elige a quien llama Zeno.
+      ZENO_CASAS: ${ZENO_CASAS:-https://n8n.zenvrax.com/,https://cockpit.zenvrax.com/,https://xrise.zenvrax.com/}
       # Tiene que coincidir CARACTER A CARACTER con el URI de redireccion del cliente en Google.
       ZENO_URL_PUBLICA: ${ZENO_URL_PUBLICA:-https://zeno.zenvrax.com}
     volumes:

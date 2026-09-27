@@ -152,3 +152,83 @@ def lee(token: str, ahora: float | None = None) -> str:
     if float(datos.get("exp", 0)) < ahora:
         raise ClaveMala("la sesión ha caducado")
     return str(datos.get("c") or "")
+
+
+# ---------------------------------------------------------------- la segunda llave
+
+#: LA LLAVE DE LO IRREVERSIBLE. Hash de un PIN corto, con el mismo formato que la clave.
+#:
+#: POR QUE EXISTE Y POR QUE NO ES OTRO LOGIN. Al poner la clave propia quedo escrito aqui mismo:
+#: "el dia que J4 ejecute acciones que publican, esto se revisa". Ese dia es hoy. Lo que cambia no
+#: es la puerta, es lo que hay detras: hasta ahora entrar significaba LEER, y ahora significa poder
+#: publicar en LinkedIn en nombre del operador.
+#:
+#: La salida facil seria pedir segundo factor al entrar, y seria la equivocada: es justo la
+#: friccion que el operador quito porque le impedia usar Zeno ("no se queda registrada y es un
+#: lio"). Una puerta que cuesta cruzar se deja de cruzar, y entonces no protege nada porque no hay
+#: nada dentro que se use.
+#:
+#: Asi que el candado se mueve de sitio: entrar sigue siendo una clave, y lo IRREVERSIBLE pide este
+#: PIN aparte. Consultar cuesta lo mismo que antes; publicar cuesta cuatro digitos.
+PIN_HASH = os.environ.get("ZENO_PIN_HASH", "")
+
+#: Cuanto vale un PIN acertado antes de volver a pedirlo. Diez minutos: aprobar ocho posts seguidos
+#: no puede pedir ocho veces el PIN, y dejarlo abierto toda la sesion lo convertiria en un adorno.
+GRACIA = float(os.environ.get("ZENO_PIN_GRACIA", "600"))
+
+#: El PIN es corto, asi que el freno importa mas que en la clave: cuatro digitos son diez mil
+#: combinaciones y sin freno se prueban en un rato.
+TOPE_PIN = 5
+CASTIGO_PIN = 900.0
+_fallos_pin: list[float] = []
+#: Cuando se acerto por ultima vez, por sesion. En memoria a proposito: un reinicio cierra la
+#: gracia, que es el lado seguro del fallo.
+_abierto: dict[str, float] = {}
+
+
+class PinMalo(RuntimeError):
+    """El PIN no es, o se ha probado demasiadas veces seguidas."""
+
+
+def hay_pin() -> bool:
+    return bool(PIN_HASH)
+
+
+def _acierta_pin(pin: str) -> bool:
+    try:
+        etiqueta, sal_hex, esperado = PIN_HASH.split("$")
+    except ValueError:
+        raise ClaveNoConfigurada("ZENO_PIN_HASH no tiene el formato scrypt$sal$hash") from None
+    if etiqueta != "scrypt":
+        raise ClaveNoConfigurada(f"no se comprobar un hash de tipo {etiqueta!r}")
+    h = hashlib.scrypt(pin.encode(), salt=bytes.fromhex(sal_hex), n=_N, r=_R, p=_P,
+                       dklen=32, maxmem=_MAXMEM)
+    return hmac.compare_digest(h.hex(), esperado)
+
+
+def abre_con_pin(sesion: str, pin: str, ahora: float | None = None) -> float:
+    """Comprueba el PIN y abre la ventana de gracia. Devuelve hasta cuando vale."""
+    global _fallos_pin
+    ahora = time.time() if ahora is None else ahora
+    if not PIN_HASH:
+        raise ClaveNoConfigurada("no hay PIN puesto para las acciones que publican")
+    _fallos_pin = [t for t in _fallos_pin if ahora - t < CASTIGO_PIN]
+    if len(_fallos_pin) >= TOPE_PIN:
+        raise PinMalo("demasiados intentos: espera un cuarto de hora")
+    if not _acierta_pin(pin or ""):
+        _fallos_pin.append(ahora)
+        raise PinMalo("ese no es el PIN")
+    _fallos_pin.clear()
+    _abierto[sesion] = ahora
+    return ahora + GRACIA
+
+
+def pin_abierto(sesion: str, ahora: float | None = None) -> bool:
+    """Si esta sesion ya puso el PIN hace poco."""
+    ahora = time.time() if ahora is None else ahora
+    return ahora - _abierto.get(sesion, 0.0) < GRACIA
+
+
+def cierra_pin(sesion: str) -> None:
+    """Cierra la ventana a mano. Lo usa salir, y cualquiera que quiera dejarlo cerrado."""
+    _abierto.pop(sesion, None)

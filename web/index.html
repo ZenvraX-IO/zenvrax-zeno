@@ -418,13 +418,12 @@ function salir() {
 }
 
 // ---------------------------------------------------------------- lo que espera tu OK
-function pintaAccion(a) {
-  // Lo que ABRE se pinta como ENLACE de verdad y es el botón grande: decisión del operador
-  // (27-sep), lo irreversible no puede ser lo más fácil de pulsar con el pulgar.
+function pintaAccion(a, i, j) {
+  // Lo que ABRE se pinta como ENLACE de verdad: decisión del operador (27-sep), lo irreversible no
+  // puede ser lo más fácil de pulsar con el pulgar.
   //
-  // Antes todos eran <span>, o sea texto muerto: "ver preview no funciona", lo dijo la primera vez
-  // que lo abrió. Ahora lo que se puede abrir se abre, y lo que ejecuta dice POR QUÉ no se pulsa
-  // todavía en vez de fingir que es un botón.
+  // Desde J4 lo que EJECUTA también es un botón, pero de dos tiempos: pulsarlo no hace nada todavía,
+  // abre la confirmación. Y lo que sale al mundo pide el PIN.
   if (!a.op) return `<span class="b sin">${esc(a.etiqueta)} · sin contrato</span>`;
   const marcas = [];
   if (a.efecto === "publica") marcas.push('<span class="marca-accion m-mundo">sale al mundo</span>');
@@ -432,7 +431,10 @@ function pintaAccion(a) {
   const texto = `${esc(a.etiqueta)} ${marcas.join(" ")}`;
   if (a.se_puede_abrir)
     return `<a class="b primaria" href="${esc(a.url)}" target="_blank" rel="noopener">${texto}</a>`;
-  return `<span class="b sin" title="Ejecutar desde Zeno llega en la fase siguiente">${texto}</span>`;
+  // Lo que publica NO es el botón primario: el primario es el de abrir y mirar. Que lo irreversible
+  // se vea menos llamativo que lo inocente es a propósito.
+  const clase = a.efecto === "publica" ? "b gasta" : "b";
+  return `<button class="${clase}" data-hacer="${i}-${j}">${texto}</button>`;
 }
 
 function pintaColas(colas, total) {
@@ -465,17 +467,93 @@ async function cargaPendientes() {
       html += `<div class="resumen"><b>${lista.length}</b> ` +
               (lista.length === 1 ? "cosa espera" : "cosas esperan") + " tu OK · " +
               `${publican} pueden salir al mundo · ${cuestan} gastan API</div>`;
-      for (const p of lista) {
+      // La lista se guarda: al confirmar hace falta la accion entera, y volver a pedirla al
+      // servidor entre proponer y confirmar podria traer otra distinta si algo cambio entremedias.
+      pendientesEnPantalla = lista;
+      for (let i = 0; i < lista.length; i++) {
+        const p = lista[i];
         html += `<div class="tarjeta">
           <div class="neg ${p.negocio === "GutLyn" ? "gutlyn" : ""}">${esc(p.negocio)}</div>
           <div class="post">${esc(p.titulo)}</div>
           ${p.cuerpo ? `<div class="extracto">${esc(p.cuerpo.slice(0, 260))}</div>` : ""}
-          <div class="btns">${(p.acciones || []).map(pintaAccion).join("")}</div>
+          <div class="btns">${(p.acciones || []).map((a, j) => pintaAccion(a, i, j)).join("")}</div>
         </div>`;
       }
     }
-    c.innerHTML = html;
+    c.innerHTML = html + '<div id="confirmar-accion"></div>';
+    c.querySelectorAll("[data-hacer]").forEach(b => b.onclick = () => {
+      const [i, j] = b.dataset.hacer.split("-").map(Number);
+      proponeAccion(pendientesEnPantalla[i], pendientesEnPantalla[i].acciones[j]);
+    });
   } catch (e) { c.innerHTML = `<div class="aviso-fallo">${esc(e.message)}</div>`; }
+}
+
+// ---------------------------------------------------------------- ejecutar, en dos tiempos
+//
+// J4. Hasta aqui Zeno enseñaba y enlazaba; esto aprueba de verdad, y aprobar un post lo publica en
+// ese momento. Por eso pulsar el boton NO ejecuta: abre una confirmacion que dice con todas las
+// letras lo que va a pasar, y lo que sale al mundo pide ademas el PIN.
+
+let pendientesEnPantalla = [];
+let accionViva = null;
+
+async function proponeAccion(pendiente, accion) {
+  const caja = $("#confirmar-accion");
+  try {
+    const pr = await api("/api/accion/proponer", { method: "POST", body: JSON.stringify({
+      op: accion.op, etiqueta: accion.etiqueta, url: accion.url, efecto: accion.efecto,
+      coste_api: !!accion.coste_api, titulo: pendiente.titulo }) });
+    accionViva = pr;
+    let h = '<div class="propuesta"><div class="q">' + esc(pr.etiqueta) + "</div>" +
+            '<div class="c">' + esc(pr.titulo || "") + "</div>";
+    if (pr.sale_al_mundo)
+      h += '<div class="ojo"><b>Esto se publica ahora y no se puede deshacer.</b></div>';
+    if (pr.cuesta_dinero)
+      h += '<div class="ojo">Gasta API.</div>';
+    h += '<div class="btns"><button class="b primaria" id="hacer-ya">' +
+         (pr.sale_al_mundo ? "Publicar" : "Hacerlo") +
+         '</button><button class="b sin" id="hacer-no">Dejarlo</button></div></div>';
+    caja.innerHTML = h;
+    caja.scrollIntoView({ block: "center" });
+    $("#hacer-no").onclick = () => { accionViva = null; caja.innerHTML = ""; };
+    $("#hacer-ya").onclick = () => haceAccion();
+  } catch (e) {
+    caja.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  }
+}
+
+async function haceAccion() {
+  if (!accionViva) return;
+  const b = $("#hacer-ya");
+  b.disabled = true; b.textContent = "…";
+  try {
+    const r = await fetch("/api/accion/confirmar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ vale: accionViva.vale }) });
+    // 428 es "falta el PIN", no "sesion mala": se pide el PIN y se reintenta con el MISMO vale.
+    if (r.status === 428) {
+      b.disabled = false; b.textContent = "Publicar";
+      const pin = prompt("PIN para publicar");
+      if (!pin) return;
+      try {
+        await api("/api/pin", { method: "POST", body: JSON.stringify({ pin }) });
+      } catch (e) { alert(e.message); return; }
+      return haceAccion();
+    }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || ("error " + r.status));
+    accionViva = null;
+    $("#confirmar-accion").innerHTML =
+      '<div class="propuesta"><div class="q">Hecho: ' + esc(d.etiqueta) + "</div>" +
+      '<div class="c">' + esc(d.titulo || "") + (d.salio_al_mundo ? " · ya está publicado" : "") +
+      "</div></div>";
+    cargaPendientes();
+  } catch (e) {
+    b.disabled = false; b.textContent = "Publicar";
+    $("#confirmar-accion").insertAdjacentHTML("beforeend",
+      '<div class="aviso-fallo">' + esc(e.message) + "</div>");
+  }
 }
 
 // ---------------------------------------------------------------- buscar

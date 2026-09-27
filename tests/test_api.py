@@ -52,9 +52,14 @@ def test_el_servicio_no_hace_ninguna_llamada_que_no_sea_get_hacia_los_dos_sistem
     assert metodos and set(metodos) == {"GET"}, f"el lector hace peticiones que no son GET: {set(metodos)}"
 
 
-def test_no_hay_ningun_endpoint_que_ejecute_una_accion():
-    """Los únicos POST del servicio son entrar, salir y el chat (apagado). Un POST que dispare una
-    acción del catálogo sería J4 entrando por la puerta de atrás."""
+def test_la_lista_de_endpoints_que_escriben_es_cerrada():
+    """Hasta J4 este test decia que NINGUN endpoint ejecutaba una accion, y esa era la promesa de
+    la fase. J4 la rompe a proposito: hay uno, `accion_confirmar`, y puede publicar en LinkedIn en
+    nombre del operador.
+
+    Asi que el guardian no se quita, se estrecha. La lista sigue cerrada: para añadir un POST hay
+    que venir aqui y escribir por que, y asi ninguno se cuela sin que nadie lo lea.
+    """
     arbol = ast.parse((RAIZ / "servicio" / "api.py").read_text(encoding="utf-8"))
     posts = []
     for n in ast.walk(arbol):
@@ -64,22 +69,44 @@ def test_no_hay_ningun_endpoint_que_ejecute_una_accion():
             f = d.func if isinstance(d, ast.Call) else d
             if isinstance(f, ast.Attribute) and f.attr in ("post", "put", "patch", "delete"):
                 posts.append(n.name)
-    # La lista es cerrada a propósito: para añadir un POST hay que venir aquí y escribir por qué, y
-    # así un endpoint que dispare una acción no puede colarse sin que nadie lo lea.
     permitidos = [
-        "chat",              # gasta API, y nace apagado
-        "google_conectar",   # devuelve la dirección de Google; no toca ni una cola
-        "google_olvidar",    # retira un permiso de Google; solo quita, nunca ejecuta
-        "agenda_confirmar",  # crea la cita; el UNICO endpoint que escribe fuera, y pide un vale
+        "accion_confirmar",  # EL UNICO que ejecuta algo de las colas. Vale, contrato y PIN
+        "accion_proponer",   # lo prepara; no llama a nadie
+        "agenda_confirmar",  # crea la cita; pide un vale
+        "agenda_proponer",   # la prepara; no toca Google
         "avisos_probar",     # manda UN aviso al movil del propio operador
         "avisos_quitar",     # borra una suscripcion
         "avisos_suscribir",  # guarda una suscripcion del navegador
-        "agenda_proponer",   # la prepara y devuelve el vale; no toca Google
-        "entrar_con_clave",  # cambia la clave propia por un token; no toca ninguna cola
-        "login", "login_2fa", "salir",
+        "chat",              # gasta API
+        "entrar_con_clave",  # cambia la clave propia por un token
+        "google_conectar",   # devuelve la direccion de Google; no toca ninguna cola
+        "google_olvidar",    # retira un permiso; solo quita
+        "login", "login_2fa", "pin_abrir", "salir",
     ]
     assert sorted(posts) == sorted(permitidos), (
-        f"endpoints que escriben y no deberían existir todavía: {sorted(posts)}")
+        f"endpoints que escriben sin estar declarados: {sorted(set(posts) - set(permitidos))}")
+
+
+def test_ejecutar_pasa_SIEMPRE_por_el_ejecutor_y_su_contrato():
+    """La red no se toca desde api.py. Todo lo que sale va por `ejecutor`, que es quien comprueba
+    el contrato, la direccion y el PIN. Si alguien llamara a una url directamente desde aqui, se
+    saltaria las cuatro barreras de golpe y el codigo seguiria pareciendo correcto."""
+    arbol = ast.parse((RAIZ / "servicio" / "api.py").read_text(encoding="utf-8"))
+    for f in ast.walk(arbol):
+        if not isinstance(f, (ast.AsyncFunctionDef, ast.FunctionDef)):
+            continue
+        if f.name != "accion_confirmar":
+            continue
+        # Solo el CUERPO: `ast.walk(f)` incluye los decoradores, y `@app.post(...)` aparecia como
+        # una llamada a "post", haciendo saltar el guardian por su propia ruta.
+        llamadas = {n.func.attr for cuerpo in f.body for n in ast.walk(cuerpo)
+                    if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+        assert "confirma" in llamadas
+        assert "pin_abierto" in llamadas, "sin esto, lo que publica saldria sin PIN"
+        assert not llamadas & {"urlopen", "get", "post", "request"}, llamadas
+        break
+    else:
+        raise AssertionError("no existe accion_confirmar")
 
 
 def test_ningun_endpoint_llama_al_catalogo_ni_dispara_una_accion():
