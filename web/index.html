@@ -983,6 +983,71 @@ async function cargaPersonal() {
   pintaAgendaExtra();
 }
 
+// ---------------------------------------------------------------- responder, sin enviar
+//
+// Zeno redacta y GUARDA EL BORRADOR EN TU GMAIL. No envia, y no hay ningun camino en Zeno que lo
+// haga: enviar sale al mundo igual que publicar, y el borrador es justo el escalon que separa las
+// dos cosas. Se revisa y se manda desde Gmail, que es donde ya trabajas.
+
+let borradorVivo = null;
+
+function abreBorrador(id) {
+  const caja = $("#borrador");
+  borradorVivo = { id };
+  caja.innerHTML =
+    '<div class="nueva"><input id="bor-intencion" autocomplete="off" ' +
+    'placeholder="qué quieres contestar (opcional)">' +
+    '<textarea id="bor-texto" rows="6" placeholder="escríbelo tú, o deja que lo escriba Zeno" ' +
+    'style="width:100%;background:#0d0d10;border:1px solid var(--linea);border-radius:9px;' +
+    'padding:11px;color:var(--texto);font-size:16px;margin-bottom:8px"></textarea>' +
+    '<div class="btns"><button class="b" id="bor-escribe">Que lo escriba Zeno</button>' +
+    '<button class="b primaria" id="bor-guarda">Guardar borrador</button>' +
+    '<button class="b sin" id="bor-nada">Dejarlo</button></div>' +
+    '<div id="bor-aviso"></div></div>';
+  caja.scrollIntoView({ block: "center" });
+  $("#bor-nada").onclick = () => { borradorVivo = null; caja.innerHTML = ""; };
+  $("#bor-escribe").onclick = () => escribeZeno();
+  $("#bor-guarda").onclick = () => guardaBorrador();
+}
+
+async function escribeZeno() {
+  const b = $("#bor-escribe");
+  b.disabled = true; b.textContent = "escribiendo…";
+  try {
+    const r = await api("/api/correo/redactar", { method: "POST", body: JSON.stringify({
+      id: borradorVivo.id, intencion: ($("#bor-intencion").value || "").trim() }) });
+    $("#bor-texto").value = r.texto || "";
+    // El coste va debajo y a la vista, como en el chat: es la unica parte de esto que gasta.
+    $("#bor-aviso").innerHTML = '<div class="coste">$' + (r.coste_usd || 0).toFixed(4) +
+                                " · " + esc(r.modelo) + " · revísalo antes de guardarlo</div>";
+  } catch (e) {
+    $("#bor-aviso").innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  } finally {
+    b.disabled = false; b.textContent = "Que lo escriba Zeno";
+  }
+}
+
+async function guardaBorrador() {
+  const texto = ($("#bor-texto").value || "").trim();
+  if (!texto) { $("#bor-texto").focus(); return; }
+  const b = $("#bor-guarda");
+  b.disabled = true; b.textContent = "…";
+  try {
+    const p = await api("/api/correo/borrador", { method: "POST", body: JSON.stringify({
+      id: borradorVivo.id, texto }) });
+    const r = await api("/api/correo/borrador/confirmar", { method: "POST", body: JSON.stringify({
+      vale: p.vale }) });
+    borradorVivo = null;
+    $("#borrador").innerHTML = '<div class="propuesta"><div class="q">Borrador guardado</div>' +
+      '<div class="c">Para ' + esc(r.para) + ". No se ha enviado.</div>" +
+      '<a class="b" href="' + esc(r.abrir) + '" target="_blank" rel="noopener">' +
+      "Abrirlo en Gmail</a></div>";
+  } catch (e) {
+    b.disabled = false; b.textContent = "Guardar borrador";
+    $("#bor-aviso").innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  }
+}
+
 // ---------------------------------------------------------------- mover y cancelar una cita
 //
 // Mismos dos tiempos que crear. Y con invitados pide el PIN, por lo mismo que publicar: cancelar
@@ -1191,13 +1256,22 @@ function pintaCorreos() {
   if (!lista.length)
     h = '<div class="vacio">' + (correosEnPantalla.length ? "nada de " + esc(filtroNegocio)
                                                           : "bandeja limpia") + "</div>";
-  for (const m of lista)
-    h += '<a class="correo" href="' + esc(m.abrir) + '" target="_blank" rel="noopener">' +
+  for (const m of lista) {
+    h += '<div class="correo">' +
+         '<a href="' + esc(m.abrir) + '" target="_blank" rel="noopener" ' +
+         'style="text-decoration:none;color:inherit;display:block">' +
          '<span class="de"><b>' + esc(soloNombre(m.de)) + "</b><i>" + esc(m.negocio) + " · " +
          esc(horaCorta(m.fecha)) + "</i></span>" +
          '<div class="as">' + esc(m.asunto) + "</div>" +
          '<div class="re">' + esc(m.resumen) + "</div></a>";
-  caja.innerHTML = h;
+    if (m.id)
+      h += '<span class="acciones-cita"><button data-responder="' + esc(m.id) +
+           '">responder</button></span>';
+    h += "</div>";
+  }
+  caja.innerHTML = h + '<div id="borrador"></div>';
+  caja.querySelectorAll("[data-responder]").forEach(b =>
+    b.onclick = () => abreBorrador(b.dataset.responder));
 }
 
 function enchufaBotonesDeCuenta(c) {

@@ -109,9 +109,20 @@ TRAMOS = {
 
 
 def permisos() -> list[str]:
-    """Los permisos que se piden hoy: leer | borrador | agenda | escribir."""
-    tramo = os.environ.get("ZENO_TRAMO", "leer")
-    return list(PERMISOS_LEER) + TRAMOS.get(tramo, [])
+    """Los permisos que se piden hoy. `ZENO_TRAMO` admite VARIOS separados por coma.
+
+    Antes era uno solo y los tramos se pisaban: al abrir la agenda habria que elegir entre mover
+    citas o dejar borradores, cuando son cosas distintas que no tienen por que ir juntas ni por que
+    excluirse. Con la lista, `agenda,borrador` dice exactamente lo que esta abierto, y sigue sin
+    abrir nada que no este escrito: un tramo desconocido no suma nada.
+    """
+    pedidos = [t.strip() for t in os.environ.get("ZENO_TRAMO", "leer").split(",") if t.strip()]
+    fuera = list(PERMISOS_LEER)
+    for tramo in pedidos:
+        for permiso in TRAMOS.get(tramo, []):
+            if permiso not in fuera:
+                fuera.append(permiso)
+    return fuera
 
 
 class SinConfigurar(RuntimeError):

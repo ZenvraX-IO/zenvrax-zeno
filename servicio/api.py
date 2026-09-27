@@ -35,7 +35,8 @@ sys.path.insert(0, str(RAIZ))
 
 import lector                                    # noqa: E402
 from servicio import (avisos, chat as chat_mod, citas, clave as clave_mod,  # noqa: E402
-                      diario, ejecutor, empuje, google, personal, ronda, sesion)
+                      correo, diario, ejecutor, empuje, google, personal, ronda,
+                      sesion)
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -80,9 +81,9 @@ async def entrar_con_clave(body: Clave):
     cockpit y encima el codigo del autenticador, varias veces al dia y desde el movil. El camino del
     cockpit sigue existiendo abajo, intacto.
     """
-    correo = sesion.USUARIOS[0] if sesion.USUARIOS else ""
+    quien = sesion.USUARIOS[0] if sesion.USUARIOS else ""
     try:
-        return clave_mod.entrar(body.clave, correo)
+        return clave_mod.entrar(body.clave, quien)
     except clave_mod.ClaveNoConfigurada as e:
         raise HTTPException(503, str(e)) from e
     except clave_mod.ClaveMala as e:
@@ -501,9 +502,9 @@ async def google_cuentas(authorization: str = Header(default="")):
     _quien(authorization)
     conectadas = google.conectadas()
     cuentas = []
-    for negocio, correo in google.CUENTAS.items():
+    for negocio, direccion in google.CUENTAS.items():
         ident, _ = google._cliente(negocio)
-        cuentas.append({"negocio": negocio, "cuenta": correo,
+        cuentas.append({"negocio": negocio, "cuenta": direccion,
                         "conectada": negocio in conectadas,
                         # El buzon REAL al que apunta. Si dos cuentas traen el mismo, una es alias
                         # de la otra y el front tiene que decirlo en vez de fingir que son dos.
@@ -680,6 +681,64 @@ async def agenda_cambio_confirmar(body: ValeDeCita, authorization: str = Header(
         # 428 cuando lo que falta es el PIN, igual que al ejecutar una accion: con 401 el front
         # borraria el token y echaria al operador fuera en mitad de una cancelacion.
         raise HTTPException(428 if "PIN" in str(e) else 409, str(e)) from e
+    except google.NoAutorizado as e:
+        raise HTTPException(503, str(e)) from e
+
+
+class Redaccion(BaseModel):
+    id: str
+    intencion: str = ""
+
+
+class Borrador(BaseModel):
+    id: str
+    texto: str
+
+
+class ValeDeBorrador(BaseModel):
+    vale: str
+
+
+@app.post("/api/correo/redactar")
+async def correo_redactar(body: Redaccion, authorization: str = Header(default="")):
+    """Propone un texto de respuesta. Cuesta una llamada y no escribe nada en Gmail."""
+    _quien(authorization)
+    if not CHAT_ACTIVO:
+        raise HTTPException(501, "Redactar gasta API y todavia no esta encendido")
+    try:
+        original = correo.lee_entero(_cual_buzon(), body.id)
+    except google.NoAutorizado as e:
+        raise HTTPException(503, str(e)) from e
+    except Exception as e:                                # noqa: BLE001
+        raise HTTPException(422, f"no encuentro ese correo ({type(e).__name__})") from e
+    try:
+        return chat_mod.redacta_respuesta(original, body.intencion)
+    except chat_mod.TopeAlcanzado as e:
+        raise HTTPException(429, str(e)) from e
+    except chat_mod.SinClaveDeIA as e:
+        raise HTTPException(503, str(e)) from e
+
+
+@app.post("/api/correo/borrador")
+async def correo_borrador(body: Borrador, authorization: str = Header(default="")):
+    """Prepara el borrador. NO lo guarda todavia."""
+    _quien(authorization)
+    try:
+        return correo.prepara(_cual_buzon(), body.id, body.texto)
+    except correo.NoSePuede as e:
+        raise HTTPException(422, str(e)) from e
+    except google.NoAutorizado as e:
+        raise HTTPException(503, str(e)) from e
+
+
+@app.post("/api/correo/borrador/confirmar")
+async def correo_borrador_confirmar(body: ValeDeBorrador, authorization: str = Header(default="")):
+    """Guarda el borrador en Gmail. NO envia: no hay ningun camino en Zeno que envie correo."""
+    _quien(authorization)
+    try:
+        return correo.guarda(body.vale)
+    except correo.NoSePuede as e:
+        raise HTTPException(409, str(e)) from e
     except google.NoAutorizado as e:
         raise HTTPException(503, str(e)) from e
 

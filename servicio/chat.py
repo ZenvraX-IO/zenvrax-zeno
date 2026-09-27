@@ -345,3 +345,58 @@ def resumen_de_la_manana(contexto: str, rehacer: bool = False) -> dict:
     _RESUMEN.clear()                      # solo se guarda el de hoy: el de ayer no sirve para nada
     _RESUMEN[hoy] = {"texto": _limpia(texto), "coste_usd": round(coste, 6), "modelo": MODELO}
     return {**_RESUMEN[hoy], "de_cache": False}
+
+
+# ---------------------------------------------------------------- redactar una respuesta
+
+SISTEMA_CORREO = (
+    "Escribes el borrador de una respuesta de correo EN NOMBRE de Gustavo Hidalgo, que lleva dos"
+    " negocios: Zenvrax IO (consultoria de automatizacion) y GutLyn+ (ecommerce de suplementos).\n\n"
+    "Lo que escribas lo va a LEER EL antes de mandarlo, asi que el objetivo es ahorrarle escribir,"
+    " no adivinar. Si falta un dato para contestar, deja un hueco entre corchetes como [fecha] en"
+    " vez de inventarlo: un hueco se ve de un vistazo y un dato inventado no.\n\n"
+    "Reglas:\n"
+    "  - Corto. Cuatro frases como mucho, y si con dos basta, dos.\n"
+    "  - Directo y educado, sin formulas de relleno ni disculpas.\n"
+    "  - En el idioma en que viene el correo.\n"
+    "  - NUNCA prometas fechas, precios ni cifras que no esten en el correo o en la instruccion.\n"
+    "  - Sin asteriscos y sin raya larga. Sin asunto ni cabeceras: solo el cuerpo.\n"
+    "  - Firma solo con el nombre, sin cargo ni empresa."
+)
+
+
+def redacta_respuesta(original: dict, intencion: str = "") -> dict:
+    """Un borrador de respuesta. Cuesta una llamada, y el operador lo edita antes de guardarlo."""
+    if not CLAVE_ANTHROPIC:
+        raise SinClaveDeIA("no hay clave de Anthropic configurada")
+    hechas = preguntas_hoy()
+    if hechas >= TOPE_DIARIO:
+        raise TopeAlcanzado(f"{hechas} preguntas hoy, el tope son {TOPE_DIARIO}")
+
+    salto = chr(10)
+    partes = [f"DE: {original.get('de','')}", f"ASUNTO: {original.get('asunto','')}",
+              "CORREO:", str(original.get("cuerpo", ""))[:3000]]
+    if intencion.strip():
+        partes += ["", "LO QUE QUIERE CONTESTAR: " + intencion.strip()]
+    else:
+        partes += ["", "No ha dicho que contestar: propon una respuesta razonable y deja entre "
+                       "corchetes lo que haga falta decidir."]
+
+    cuerpo = json.dumps({
+        "model": MODELO, "max_tokens": 500, "temperature": 0.3,
+        "system": SISTEMA_CORREO,
+        "messages": [{"role": "user", "content": salto.join(partes)}],
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=cuerpo, method="POST",
+        headers={"content-type": "application/json", "x-api-key": CLAVE_ANTHROPIC,
+                 "anthropic-version": "2023-06-01"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        datos = json.loads(r.read())
+
+    _gastado[_hoy()] = hechas + 1
+    uso = datos.get("usage") or {}
+    coste = (uso.get("input_tokens", 0) / 1e6 * PRECIO_ENTRADA
+             + uso.get("output_tokens", 0) / 1e6 * PRECIO_SALIDA)
+    texto = "".join(b.get("text", "") for b in datos.get("content", []) if b.get("type") == "text")
+    return {"texto": _limpia(texto), "coste_usd": round(coste, 6), "modelo": MODELO}

@@ -192,15 +192,21 @@ def test_solo_hay_una_puerta_de_escritura_y_se_sabe_quien_la_usa():
                     and n.func.attr == "escribe"
                     and getattr(n.func.value, "id", "") == "google"):
                 culpables.append(f.name)
-    assert sorted(set(culpables)) == ["citas.py"], (
+    assert sorted(set(culpables)) == ["citas.py", "correo.py"], (
         f"alguien mas escribe en Google: {sorted(set(culpables))}")
 
 
 def test_escribir_en_google_solo_pasa_por_confirmar():
-    """Dentro de citas.py, la escritura tiene que estar en `confirma` y en ningun otro sitio: si
-    `propone` escribiera, la cita existiria antes de que el operador la mirara, que es justo lo que
-    este diseño evita."""
-    arbol = ast.parse((RAIZ / "servicio" / "citas.py").read_text(encoding="utf-8"))
+    """Lo que importa no es el nombre exacto de la funcion, es la FORMA: quien escribe es siempre
+    quien consume un vale, nunca quien lo reparte. Si una funcion `propone` o `prepara` escribiera,
+    la cita o el borrador existirian antes de que el operador los mirara, y los dos tiempos no
+    servirian de nada."""
+    for fichero, permitidas in (("citas.py", ("confirma",)), ("correo.py", ("guarda",))):
+        _solo_escriben(fichero, permitidas)
+
+
+def _solo_escriben(fichero, permitidas):
+    arbol = ast.parse((RAIZ / "servicio" / fichero).read_text(encoding="utf-8"))
     dentro_de = []
     for f in ast.walk(arbol):
         if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -212,10 +218,10 @@ def test_escribir_en_google_solo_pasa_por_confirmar():
     # Solo las funciones que CONFIRMAN. Lo que importa no es el nombre exacto sino la forma: una
     # funcion `propone*` nunca puede escribir, porque entonces la cita existiria antes de que el
     # operador la mirara y los dos tiempos no servirian de nada.
-    assert dentro_de, "nadie escribe en Google: falta la pieza que confirma"
+    assert dentro_de, f"nadie escribe en Google desde {fichero}: falta la pieza que confirma"
     for donde in dentro_de:
-        assert donde.startswith("confirma"), f"se escribe desde {donde}, que no confirma nada"
-    assert not [x for x in dentro_de if x.startswith("propone")]
+        assert donde.startswith(permitidas), f"{fichero}: se escribe desde {donde}"
+    assert not [x for x in dentro_de if x.startswith(("propone", "prepara"))]
 
 
 def test_personal_sigue_sin_poder_escribir():
@@ -429,3 +435,21 @@ def test_la_agenda_no_mira_solo_tres_dias():
     """La pantalla decia "nada en los proximos dias" teniendo una cita dentro del mes. Con una
     agenda poco cargada, tres dias enseñan vacio casi siempre y el apartado parece roto."""
     assert personal.DIAS_DE_AGENDA >= 14
+
+
+def test_se_pueden_abrir_dos_tramos_a_la_vez(monkeypatch):
+    """Antes el tramo era uno solo y se pisaban: al abrir la agenda habria que elegir entre mover
+    citas o dejar borradores, cuando son cosas distintas que no tienen por que excluirse."""
+    monkeypatch.setenv("ZENO_TRAMO", "agenda,borrador")
+    p = google.permisos()
+    assert google.PERMISO_AGENDA in p and google.PERMISO_BORRADOR in p
+    assert google.PERMISO_ENVIAR not in p, "y seguir sin poder enviar correo"
+    assert len(p) == len(set(p)), "sin repetidos"
+
+
+def test_un_tramo_desconocido_en_la_lista_no_abre_nada_de_mas(monkeypatch):
+    """Una errata en el `.env` no puede concedes mas de lo que dicen las palabras escritas."""
+    monkeypatch.setenv("ZENO_TRAMO", "agenda,escrbir,borradr")
+    p = google.permisos()
+    assert google.PERMISO_AGENDA in p
+    assert google.PERMISO_ENVIAR not in p and google.PERMISO_BORRADOR not in p

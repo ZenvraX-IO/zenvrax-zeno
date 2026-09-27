@@ -93,6 +93,8 @@ def correos(negocio: str, cuantos: int = 12, dias: int = 7,
             "&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Delivered-To")
         destinos = " ".join(_cabecera(detalle, c) for c in ("Delivered-To", "To", "Cc"))
         fuera.append({
+            # El id viaja para poder responder desde la propia lista.
+            "id": m["id"],
             # El negocio sale de A QUIEN iba, no de con que permiso se leyo: con un alias, las dos
             # autorizaciones son el mismo buzon y lo segundo no distingue nada.
             "negocio": _de_quien_es(destinos, negocios),
