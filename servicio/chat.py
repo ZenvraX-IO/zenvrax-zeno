@@ -58,6 +58,8 @@ Contestas sobre DOS negocios que están separados y no se mezclan:
 REGLAS, y son duras:
   - Responde SOLO con los datos del contexto. Si algo no está, di que no lo sabes y dónde mirarlo.
     Inventar una cifra de negocio es peor que no contestar.
+  - UN CERO NO ES UNA AUSENCIA. Si el contexto dice que los ingresos son 0 o que no hay pedidos,
+    esa ES la respuesta: dila con su cifra y explica por qué, no digas que no tienes el dato.
   - Si el contexto avisa de que una fuente no respondió, DILO antes de dar números: una lista corta
     sin aviso se lee como "hay poco".
   - Lo que publica hacia fuera (LinkedIn, X, Meta, correo) es irreversible. Nómbralo como tal.
@@ -111,6 +113,35 @@ def _kpis(negocio: dict) -> str:
     return "\n".join(lineas)
 
 
+def _ventas(ventas: dict) -> str:
+    """Las ventas en texto, no en JSON crudo.
+
+    POR QUE CAMBIO. Primero se pasaba el JSON tal cual "para no decidir por el modelo".
+    Resultado: ante un objeto lleno de 0.0 y null, Haiku contesto "no tengo datos de ventas de
+    GutLyn" cuando el dato SI estaba y decia CERO. Un cero no es la ausencia de un dato: es una
+    respuesta, y en este caso la importante.
+
+    Se escriben las cifras una por linea y se dice explicitamente cuando todo esta a cero.
+    """
+    r = ventas.get("resumen") or {}
+    dias = r.get("period_days", 30)
+    lineas = [f"VENTAS DE GUTLYN, ultimos {dias} dias (fuente: Xrise):"]
+    for etiqueta, clave, moneda in (
+            ("ingresos", "revenue", True), ("de Amazon", "amazon_revenue", True),
+            ("de Shopify", "shopify_revenue", True), ("beneficio neto", "net_profit", True),
+            ("gasto en publicidad", "ad_spend", True),
+            ("devoluciones", "returns_amount", True),
+            ("pedidos", "orders", False), ("unidades", "units", False)):
+        v = r.get(clave)
+        if v is None:
+            continue
+        lineas.append(f"    {etiqueta}: ${v:,.2f}" if moneda else f"    {etiqueta}: {v}")
+    if not r.get("revenue") and not r.get("orders"):
+        lineas.append("    TODO A CERO: no falta el dato, es que GutLyn no tiene ninguna venta "
+                      "registrada en Xrise en ese periodo. La tienda aun no esta conectada.")
+    return "\n".join(lineas)
+
+
 def _contexto(pendientes: list, colas: list, fallos: list, documentos: list,
               estado: dict | None = None, ventas: dict | None = None) -> str:
     """Todo lo que Zeno sabe, en texto.
@@ -134,9 +165,7 @@ def _contexto(pendientes: list, colas: list, fallos: list, documentos: list,
             f"    {a.get('label')}: {a.get('value')}" for a in alertas))
 
     if ventas:
-        # Las cifras van en crudo: resumirlas aqui seria decidir por el modelo cuales importan.
-        partes.append("VENTAS DE GUTLYN (de Xrise):\n"
-                      + json.dumps(ventas, ensure_ascii=False)[:1400])
+        partes.append(_ventas(ventas))
 
     plan = (estado or {}).get("plan_del_dia") or {}
     foco = plan.get("focus") or {}

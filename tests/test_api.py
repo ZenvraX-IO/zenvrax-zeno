@@ -234,3 +234,30 @@ def test_un_negocio_sin_cifras_dice_por_que():
     estado = {"zenvrax": {"negocios": [{"nombre": "GutLyn+", "sub": "e", "kpis": [],
                                         "nota": "Sin ventas registradas todavia"}]}}
     assert "Sin ventas registradas" in _contexto([], [], [], [], estado, None)
+
+
+def test_un_cero_en_ventas_no_se_presenta_como_falta_de_dato():
+    """EL SEGUNDO INTENTO DEL MISMO FALLO (2026-09-27).
+
+    Primero el chat no recibía las ventas. Se las di en JSON crudo "para no decidir por el modelo",
+    y ante un objeto lleno de `0.0` y `null` volvió a contestar *"no tengo datos de ventas"*
+    cuando el dato SÍ estaba y decía cero.
+
+    Un cero no es la ausencia de un dato: es una respuesta, y aquí la importante. Se comprueba en
+    los dos sitios, porque hacía falta arreglar los dos: el texto que se le pasa y la regla.
+    """
+    from servicio.chat import _ventas, SISTEMA
+    texto = _ventas({"resumen": {"period_days": 30, "revenue": 0.0, "orders": 0}})
+    assert "ingresos: $0.00" in texto, "la cifra tiene que aparecer, no desaparecer por ser cero"
+    assert "TODO A CERO" in texto and "no falta el dato" in texto
+    assert "UN CERO NO ES UNA AUSENCIA" in SISTEMA, (
+        "sin la regla en el prompt, el modelo vuelve a leer los ceros como que no sabe")
+
+
+def test_las_ventas_no_se_pasan_como_json_crudo():
+    """El JSON con veinte claves y la mitad a null es lo que confundió al modelo."""
+    import inspect
+    from servicio import chat as m
+    fuente = inspect.getsource(m._contexto)
+    assert "_ventas(ventas)" in fuente
+    assert "json.dumps(ventas" not in fuente, "las ventas vuelven a ir en crudo"
