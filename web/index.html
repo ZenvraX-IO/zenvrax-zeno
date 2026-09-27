@@ -480,7 +480,8 @@ async function cargaPendientes() {
         </div>`;
       }
     }
-    c.innerHTML = html + '<div id="confirmar-accion"></div>';
+    c.innerHTML = html + '<div id="confirmar-accion"></div><div id="lo-hecho"></div>';
+    pintaHecho();
     c.querySelectorAll("[data-hacer]").forEach(b => b.onclick = () => {
       const [i, j] = b.dataset.hacer.split("-").map(Number);
       proponeAccion(pendientesEnPantalla[i], pendientesEnPantalla[i].acciones[j]);
@@ -554,6 +555,35 @@ async function haceAccion() {
     $("#confirmar-accion").insertAdjacentHTML("beforeend",
       '<div class="aviso-fallo">' + esc(e.message) + "</div>");
   }
+}
+
+// ---------------------------------------------------------------- lo que Zeno ha hecho
+//
+// Aparecio con J4: desde que Zeno publica, la primera pregunta al ver algo publicado que no
+// recuerdas es si salio desde aqui. Va al final de Pendiente y no en Hoy, que se queda corta.
+
+async function pintaHecho() {
+  const caja = $("#lo-hecho");
+  if (!caja) return;
+  let d;
+  try { d = await api("/api/hecho?cuantos=12"); } catch { return; }
+  const lista = d.hecho || [];
+  if (!lista.length) return;
+
+  let h = '<div class="apartado">Lo que he hecho</div>';
+  for (const x of lista) {
+    const cuando = new Date((x.cuando || 0) * 1000);
+    const marca = x.resultado === "no_se_sabe"
+      ? '<span class="marca-accion m-mundo">no se sabe</span>'
+      : x.resultado === "error" ? '<span class="marca-accion m-mundo">falló</span>'
+      : x.publica ? '<span class="marca-accion m-cuesta">publicado</span>' : "";
+    h += '<div class="cuenta"><div class="c"><b>' + esc(x.etiqueta || x.op) + " " + marca +
+         "</b><span>" + esc(x.titulo || "") + " · " +
+         cuando.toLocaleString("es-ES", { day: "numeric", month: "short",
+                                          hour: "2-digit", minute: "2-digit" }) +
+         "</span></div></div>";
+  }
+  caja.innerHTML = h;
 }
 
 // ---------------------------------------------------------------- buscar

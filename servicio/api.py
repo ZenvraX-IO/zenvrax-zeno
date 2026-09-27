@@ -35,7 +35,7 @@ sys.path.insert(0, str(RAIZ))
 
 import lector                                    # noqa: E402
 from servicio import (avisos, chat as chat_mod, citas, clave as clave_mod,  # noqa: E402
-                      ejecutor, empuje, google, personal, ronda, sesion)
+                      diario, ejecutor, empuje, google, personal, ronda, sesion)
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -383,6 +383,19 @@ async def accion_confirmar(body: ValeDeAccion, authorization: str = Header(defau
         raise HTTPException(428, str(e)) from e
     except ejecutor.NoSePuede as e:
         raise HTTPException(409, str(e)) from e
+
+
+@app.get("/api/hecho")
+async def api_hecho(cuantos: int = Query(default=30, ge=1, le=200),
+                    authorization: str = Header(default="")):
+    """Lo que Zeno ha hecho, del mas reciente al mas viejo.
+
+    Contesta a la pregunta que aparecio el dia que Zeno empezo a publicar: si algo salio desde aqui
+    o desde otro sitio. Y los intentos de los que no se supo el resultado salen marcados, porque son
+    justo los que hay que ir a mirar.
+    """
+    _quien(authorization)
+    return {"hecho": diario.lee(cuantos)}
 
 
 # ---------------------------------------------------------------- la documentación

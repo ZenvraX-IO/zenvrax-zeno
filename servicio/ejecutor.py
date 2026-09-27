@@ -28,6 +28,8 @@ import time
 import urllib.error
 import urllib.request
 
+from servicio import diario
+
 #: Los tres efectos que declara el catalogo. Se repiten aqui como constantes para que este modulo
 #: no dependa de importar el catalogo entero, que dentro del contenedor vive congelado.
 PUBLICA = "publica"
@@ -101,6 +103,8 @@ def confirma(vale: str, pin_abierto: bool) -> dict:
         raise HaceFaltaPin("esta accion publica: hace falta el PIN")
 
     _VALES.pop(vale, None)          # se quema aqui: a partir de este punto ya no se puede repetir
+    apunte = {"op": d["op"], "etiqueta": d["etiqueta"], "titulo": d["titulo"],
+              "efecto": d["efecto"], "publica": d["efecto"] == PUBLICA}
     req = urllib.request.Request(d["url"], method="GET", headers={
         # Que se sepa desde donde se disparo. Si un post sale raro, el primer dato util es si lo
         # aprobo el cockpit, Xrise o Zeno.
@@ -110,15 +114,20 @@ def confirma(vale: str, pin_abierto: bool) -> dict:
             cuerpo = (r.read() or b"")[:400].decode("utf-8", "replace")
             codigo = r.status
     except urllib.error.HTTPError as e:
+        diario.apunta({**apunte, "resultado": "error", "codigo": e.code})
         raise NoSePuede(f"el sistema ha contestado {e.code}") from e
     except Exception as e:                               # noqa: BLE001
         # AQUI NO SE SABE SI SE HIZO. Un timeout despues de mandar la peticion puede significar que
         # el post ya salio. Decir "no se ha podido" seria mentir con seguridad y llevaria a
         # reintentar, o sea a publicar dos veces.
+        # SE APUNTA IGUAL, y marcado como dudoso. Un intento del que no se sabe el resultado es
+        # justo el que hay que ir a mirar: si no quedara escrito, seria el unico que desaparece.
+        diario.apunta({**apunte, "resultado": "no_se_sabe", "motivo": type(e).__name__})
         raise NoSePuede(
             f"no se ha podido saber si salio ({type(e).__name__}): comprueba en el sistema antes "
             "de repetirlo") from e
 
+    diario.apunta({**apunte, "resultado": "hecho", "codigo": codigo})
     return {"hecho": True, "op": d["op"], "etiqueta": d["etiqueta"], "titulo": d["titulo"],
             "codigo": codigo, "respuesta": cuerpo.strip()[:200],
             "salio_al_mundo": d["efecto"] == PUBLICA}

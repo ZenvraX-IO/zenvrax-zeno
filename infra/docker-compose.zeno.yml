@@ -56,6 +56,10 @@ services:
       ZENO_VAPID_PRIVADA: ${ZENO_VAPID_PRIVADA:-}
       ZENO_VAPID_CONTACTO: ${ZENO_VAPID_CONTACTO:-mailto:hola@zenvrax.com}
       ZENO_AVISOS: /datos/avisos.json
+      # El diario de lo ejecutado. Mismo volumen: si no persistiera, cada despliegue
+      # borraria el rastro de lo que Zeno publico, que es justo lo que hay que poder
+      # mirar despues.
+      ZENO_DIARIO: /datos/hecho.jsonl
       ZENO_TOPE_AVISOS: ${ZENO_TOPE_AVISOS:-5}
       # La clave propia de Zeno, como hash. Entrar pedia la contraseña del cockpit MAS el codigo de
       # seis cifras, varias veces al dia desde el movil: una puerta que cuesta cruzar se deja de

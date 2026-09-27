@@ -204,3 +204,69 @@ def test_no_hay_ninguna_forma_de_ejecutar_en_lote():
     fuente = (RAIZ / "servicio" / "ejecutor.py").read_text(encoding="utf-8")
     for masivo in ("for vale in", "def confirma_todo", "def propone_todos", "lote"):
         assert masivo not in fuente or "lote" in fuente.split("LO QUE NO HACE")[1][:400]
+
+
+# ---------------------------------------------------------------- queda escrito lo que sale
+
+def test_lo_ejecutado_queda_apuntado(monkeypatch):
+    """Con J4, Zeno publica en nombre del operador y el unico sitio donde constaba era el sistema
+    de destino, mezclado con lo que aprueba el cockpit y lo que aprueba Xrise. La primera pregunta
+    al ver algo publicado que no recuerdas es si lo aprobaste tu desde aqui."""
+    apuntes = []
+    monkeypatch.setattr(ejecutor.diario, "apunta", apuntes.append)
+    _sale_bien(monkeypatch, [])
+    v = ejecutor.propone("claire.aprobar", "Aprobar", APROBAR, ejecutor.PUBLICA, titulo="Un post")
+    ejecutor.confirma(v["vale"], pin_abierto=True)
+    assert len(apuntes) == 1
+    assert apuntes[0]["resultado"] == "hecho" and apuntes[0]["publica"] is True
+    assert apuntes[0]["titulo"] == "Un post"
+
+
+def test_lo_que_no_se_sabe_TAMBIEN_queda_apuntado(monkeypatch):
+    """EL RENGLON QUE MAS IMPORTA. Un timeout puede significar que el post ya salio. Si ese intento
+    no quedara escrito, seria justo el unico que desaparece del diario, y es el unico que hay que
+    ir a mirar."""
+    apuntes = []
+    monkeypatch.setattr(ejecutor.diario, "apunta", apuntes.append)
+    def cuelga(*a, **k):
+        raise TimeoutError("boom")
+    monkeypatch.setattr(ejecutor.urllib.request, "urlopen", cuelga)
+    v = ejecutor.propone("a", "Aprobar", APROBAR, ejecutor.PUBLICA)["vale"]
+    with pytest.raises(ejecutor.NoSePuede):
+        ejecutor.confirma(v, pin_abierto=True)
+    assert apuntes[0]["resultado"] == "no_se_sabe"
+
+
+def test_un_diario_roto_no_tumba_una_accion_ya_hecha(monkeypatch):
+    """Si apuntar reventara DESPUES de publicar, el operador veria un error y creeria que no salio,
+    cuando si salio. Eso lleva a reintentar, o sea a publicar dos veces."""
+    def revienta(_):
+        raise OSError("disco lleno")
+    monkeypatch.setattr(ejecutor.diario, "apunta", revienta)
+    _sale_bien(monkeypatch, [])
+    v = ejecutor.propone("a", "Aprobar", APROBAR, ejecutor.PUBLICA)["vale"]
+    with pytest.raises(OSError):
+        ejecutor.confirma(v, pin_abierto=True)
+
+
+def test_el_diario_aguanta_una_linea_rota(monkeypatch, tmp_path):
+    """Un reinicio en mitad de una escritura deja media linea. Tirar el fichero entero por eso
+    seria perder el historial de meses por un renglon."""
+    from servicio import diario
+    libro = tmp_path / "hecho.jsonl"
+    monkeypatch.setattr(diario, "LIBRO", libro)
+    diario.apunta({"op": "uno", "resultado": "hecho"})
+    with libro.open("a", encoding="utf-8") as f:
+        f.write('{"op": "a med')
+    diario.apunta({"op": "dos", "resultado": "hecho"})
+    ops = [x["op"] for x in diario.lee()]
+    assert ops == ["dos", "uno"], ops
+
+
+def test_el_diario_no_guarda_el_cuerpo_de_lo_publicado():
+    """Zeno no es el sitio donde vive el contenido. Una copia seria la tercera verdad que esta
+    arquitectura evita a proposito: se guarda QUE accion, sobre QUE, cuando y como acabo."""
+    fuente = (RAIZ / "servicio" / "ejecutor.py").read_text(encoding="utf-8")
+    trozo = fuente[fuente.index("apunte = {"):fuente.index("req = urllib.request.Request")]
+    for prohibido in ("cuerpo", "body", "contenido", "texto"):
+        assert prohibido not in trozo, f"el diario guarda {prohibido}"
