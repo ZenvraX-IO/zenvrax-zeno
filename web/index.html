@@ -10,9 +10,20 @@
 <link rel="icon" sizes="64x64" href="/img/favicon-64.png?v=20260927c">
 <link rel="apple-touch-icon" href="/img/apple-touch-icon.png?v=20260927c">
 <style>
+  /* EL SISTEMA, y cada regla esta aqui porque su ausencia se noto.
+     · UN COLOR, UN SIGNIFICADO. El ambar era a la vez marca, cifra, alerta, boton y filtro activo:
+       cinco significados es ninguno. Ahora es marca y accion principal, y nada mas.
+     · CUATRO TAMAÑOS de letra. Habia nueve entre 10,5 y 22.
+     · La caja se gasta donde hay que decidir. Las listas son lineas. */
   :root{
-    --negro:#101012; --carbon:#17171b; --linea:#26262c; --texto:#f2f2f4; --gris:#9a9aa4;
-    --ambar:#f0a830; --ambar-suave:#3a2c12; --rojo:#e0574a;
+    --negro:#0e0e10; --carbon:#141418; --alto:#17171b; --linea:#1e1e24; --linea-fuerte:#26262c;
+    --texto:#f4f4f6; --gris:#8c8c94; --apagado:#77777f; --tenue:#6c6c74;
+    --ambar:#f0a830; --ambar-suave:#3a2c12; --rojo:#e0574a; --rojo-claro:#ff9d8f;
+    --verde:#4fbf87; --violeta:#b8a0e8;
+    /* La voz de Zeno va en serif y del sistema: se distingue de un vistazo de lo que son datos, y
+       no cuesta una peticion mas en una aplicacion que se abre veinte veces al dia. */
+    --voz:Georgia,"Times New Roman",serif;
+    --t1:26px; --t2:19px; --t3:14.5px; --t4:11px;
     --arriba:env(safe-area-inset-top,0px); --abajo:env(safe-area-inset-bottom,0px);
   }
   *{box-sizing:border-box}
@@ -23,10 +34,14 @@
   [hidden]{display:none!important}
   button{font:inherit}
 
-  .barra{display:flex;align-items:center;gap:10px;padding:calc(14px + var(--arriba)) 16px 14px;
-         border-bottom:1px solid var(--linea);position:sticky;top:0;background:var(--negro);z-index:5}
-  .barra .t{font-weight:600;flex:1}
-  .barra .salir{color:var(--gris);background:none;border:0;font-size:13px}
+  .barra{display:flex;align-items:flex-start;gap:10px;padding:calc(18px + var(--arriba)) 20px 12px;
+         position:sticky;top:var(--arriba);background:var(--negro);z-index:5}
+  .barra .t{flex:1;font-size:var(--t1);font-weight:600;letter-spacing:-.5px;line-height:1.15}
+  .barra .fecha{font-size:var(--t4);letter-spacing:1.4px;text-transform:uppercase;
+                color:var(--apagado);font-weight:500;display:block;margin-bottom:2px}
+  .barra .icono{background:none;border:0;padding:8px;margin-top:6px;color:var(--gris);
+                cursor:pointer;line-height:0}
+  .barra .salir{color:var(--tenue);background:none;border:0;font-size:12px;margin-top:10px}
   /* LA MARCA ES LA MISMA QUE EL ICONO, y por eso es un SVG con la geometria del generador y no un
      dibujo aparte en CSS. Lo que habia era la PRIMERA version, la que el operador rechazo: la
      diagonal en blanco y un punto ambar. Convivia con un icono distinto en la pestaña y en la
@@ -35,8 +50,7 @@
 
   /* `overscroll-behavior:contain` apaga el rebote propio del navegador: sin eso, en iOS el gesto
      lo captura Safari y el tiron de recargar no llega nunca a la aplicacion. */
-  main{flex:1;overflow-y:auto;padding:14px 16px 20px;overscroll-behavior:contain;
-       position:relative}
+  main{flex:1;overflow-y:auto;padding:2px 20px 24px;overscroll-behavior:contain;position:relative}
   #tiron{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;
          justify-content:center;color:var(--gris);font-size:12.5px;pointer-events:none;
          height:0;overflow:hidden}
@@ -45,9 +59,23 @@
                 border-radius:50%;margin-right:8px;display:inline-block}
   #tiron.girando .rueda{animation:gira .7s linear infinite}
   @keyframes gira{to{transform:rotate(360deg)}}
-  .pie{display:flex;border-top:1px solid var(--linea);padding-bottom:var(--abajo);background:var(--negro)}
-  .pie button{flex:1;background:none;border:0;color:var(--gris);padding:12px 0 14px;font-size:12px}
-  .pie button.on{color:var(--ambar)}
+  /* TRES pestañas. Eran seis, y en 390px son 65px cada una. Preguntar y buscar se hacen DESDE
+     donde estas, asi que el chat es una burbuja y buscar es la lupa de arriba: no son sitios. */
+  .pie{display:flex;border-top:1px solid var(--linea);padding:0 12px var(--abajo);
+       background:var(--negro)}
+  .pie button{flex:1;background:none;border:0;color:var(--apagado);padding:14px 0 18px;
+              font-size:13.5px;cursor:pointer}
+  .pie button.on{color:var(--ambar);font-weight:600}
+  .flotante{position:fixed;right:18px;bottom:calc(88px + var(--abajo));width:54px;height:54px;
+            border-radius:50%;background:var(--ambar);border:0;display:flex;align-items:center;
+            justify-content:center;z-index:6;cursor:pointer;color:#221a08}
+  /* Las capas del chat y de buscar. Cubren la pantalla en vez de ser pestañas: se abren, se usan y
+     se cierran, que es como se usan de verdad. */
+  .capa{position:fixed;inset:0;background:var(--negro);z-index:20;display:flex;
+        flex-direction:column;padding-top:var(--arriba)}
+  .capa .cabecera{display:flex;align-items:center;gap:10px;padding:14px 20px 10px}
+  .capa .cabecera .t{flex:1;font-size:var(--t2);font-weight:600}
+  .capa .cuerpo{flex:1;overflow-y:auto;padding:0 20px 20px}
 
   .aviso-fallo{background:#2a1a18;border:1px solid #50302a;color:#ffb3aa;border-radius:10px;
                padding:10px 12px;font-size:13px;margin-bottom:12px}
@@ -84,12 +112,10 @@
                   padding:11px 14px;color:var(--texto);font-size:16px}
   .enviar{width:36px;height:36px;border-radius:50%;background:var(--ambar);color:#221a08;
           border:0;font-size:17px;font-weight:700;flex:0 0 auto}
-  .colas{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px}
-  .cola{background:var(--carbon);border:1px solid var(--linea);border-radius:11px;
-        padding:10px 11px;display:flex;gap:10px;align-items:center}
-  .cola .n{font-size:22px;font-weight:600;color:var(--ambar);min-width:32px;text-align:right}
-  .cola .q{font-size:12px;line-height:1.3}
-  .cola .q span{color:var(--gris);font-size:11px}
+  .fichas{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .ficha{background:#1c1c22;border-radius:20px;padding:7px 13px;font-size:12.5px;
+         color:var(--texto)}
+  .ficha b{font-variant-numeric:tabular-nums}
 
   /* La caja de buscar, pensada para el pulgar y no para el raton:
      · font-size 16px OBLIGATORIO. Con menos, iOS hace ZOOM al enfocar y descoloca la pantalla
@@ -130,8 +156,8 @@
   .punto.si{background:#4fbf87}
   /* El alias no tiene estado propio: no esta ni conectado ni por conectar, se lee con su buzon. */
   .punto.alias{background:none;border:1px solid var(--linea)}
-  .apartado{font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:var(--gris);
-            margin:20px 0 10px;display:flex;align-items:center;gap:10px}
+  .apartado{font-size:var(--t4);letter-spacing:1.2px;text-transform:uppercase;color:var(--apagado);
+            font-weight:500;margin:24px 0 12px;display:flex;align-items:baseline;gap:8px}
   /* La cuenta conectada es un pie discreto: importa el primer dia y despues estorba. */
   .pie-cuentas{margin:26px 0 4px;color:#6f6f78;font-size:11.5px;text-align:center}
   .avisos{background:var(--carbon);border:1px solid var(--linea);border-radius:12px;
@@ -193,36 +219,56 @@
   /* HOY. Lo primero que se ve al abrir. Corto a proposito: el foco, lo urgente, y tres lineas.
      Las cifras viven en Negocios y el correo en Personal; repetirlos aqui convertiria la entrada en
      un panel que se deja de leer. */
-  .foco{background:var(--carbon);border:1px solid var(--linea);border-left:3px solid var(--ambar);
-        border-radius:13px;padding:15px;margin-bottom:14px}
-  .foco .q{font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:var(--gris);
-           margin-bottom:7px}
-  .foco .t{font-size:17px;font-weight:600;line-height:1.3;margin-bottom:6px}
-  .foco .c{color:var(--gris);font-size:13px;line-height:1.45}
-  .resumen-ia{background:#1a1a20;border:1px solid var(--linea);border-radius:13px;
-              padding:14px 15px;margin-bottom:14px;font-size:14.5px;line-height:1.55;
-              white-space:pre-wrap}
-  .resumen-ia .firma{display:block;margin-top:9px;color:#6f6f78;font-size:10.5px;
-                     white-space:normal}
+  .foco{display:block;text-decoration:none;color:inherit;background:var(--alto);
+        border:1px solid var(--linea-fuerte);border-radius:16px;padding:18px;margin-bottom:24px}
+  .foco .q{font-size:var(--t4);letter-spacing:1.2px;text-transform:uppercase;color:var(--apagado);
+           font-weight:500;margin-bottom:12px}
+  .foco .t{font-size:var(--t2);font-weight:600;line-height:1.25;letter-spacing:-.3px}
+  .foco .c{color:var(--gris);font-size:13.5px;line-height:1.45;margin-top:6px}
+  /* Lo urgente es una LISTA, no cuatro cajas rojas: cuatro cajas iguales no son cuatro cosas
+     distintas, y el rojo repetido deja de leerse como rojo. */
+  .urgente{display:flex;gap:12px;align-items:center;text-decoration:none;color:inherit;
+           padding:10px 0;border-top:1px solid var(--linea);min-height:44px;background:none;
+           border-left:0;border-right:0;border-bottom:0;border-radius:0;margin:0}
+  .urgente:last-of-type{border-bottom:1px solid var(--linea)}
+  .urgente .p{width:3px;height:16px;border-radius:2px;background:var(--rojo);flex:0 0 auto}
+  .urgente .n{flex:1;font-size:var(--t3);line-height:1.35}
+  .atajos{display:flex;gap:12px;margin-top:22px}
+  .atajo{flex:1;text-decoration:none;color:inherit;background:var(--carbon);border-radius:14px;
+         padding:14px}
+  .atajo b{display:block;font-size:22px;font-weight:600;letter-spacing:-.5px;
+           font-variant-numeric:tabular-nums}
+  .atajo span{color:var(--gris);font-size:12px;margin-top:3px;display:block}
+  /* LA VOZ. Sin caja y en serif: es lo unico que Zeno escribe, y una cifra es un hecho mientras
+     que una frase suya es una opinion. Que se distingan de un vistazo no es decoracion. */
+  .resumen-ia{font-family:var(--voz);font-size:20px;line-height:1.45;color:#ece9e2;
+              margin:6px 0 22px;white-space:pre-wrap}
+  .resumen-ia .firma{display:flex;align-items:center;gap:7px;margin-top:12px;color:var(--tenue);
+                     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+                     font-size:11px;white-space:normal}
+  .resumen-ia .firma::before{content:"";width:5px;height:5px;border-radius:50%;
+                             background:var(--ambar);flex:0 0 auto}
   .urgente{display:flex;gap:11px;align-items:center;text-decoration:none;color:inherit;
            background:var(--carbon);border:1px solid #50302a;border-radius:11px;padding:11px 12px;
            margin-bottom:9px;min-height:44px}
   .urgente .p{width:7px;height:7px;border-radius:50%;background:var(--rojo);flex:0 0 auto}
   .urgente .n{font-size:14px;line-height:1.35}
 
-  .negocio{background:var(--carbon);border:1px solid var(--linea);border-radius:13px;
-           padding:14px;margin-bottom:12px}
+  /* Las cifras van DESNUDAS y con los digitos alineados. Solo se colorea la que va mal: si se
+     colorean todas, el color deja de avisar de nada. */
+  .negocio{background:var(--carbon);border-radius:14px;padding:14px 15px;margin-bottom:10px;
+           border-left:3px solid var(--ambar)}
+  .negocio.gutlyn{border-left-color:var(--violeta)}
   .negocio > h2{margin:0 0 2px;font-size:16px;font-weight:600;display:flex;align-items:baseline;
                 gap:8px}
   .negocio > h2 em{font-style:normal;font-size:11px;letter-spacing:.7px;text-transform:uppercase;
                    color:var(--gris)}
   .negocio .de{color:var(--gris);font-size:11.5px;margin:0 0 12px}
-  .cifras{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
-  @media (min-width:560px){.cifras{grid-template-columns:repeat(4,1fr)}}
-  .cifra{background:#1b1b21;border-radius:9px;padding:9px 10px}
-  .cifra .k{color:var(--gris);font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;
-            margin-bottom:3px;line-height:1.25}
-  .cifra .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+  .cifras{display:flex;gap:18px;flex-wrap:wrap}
+  .cifra{min-width:58px}
+  .cifra .v{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+  .cifra .k{color:var(--apagado);font-size:10.5px;letter-spacing:.7px;text-transform:uppercase;
+            margin-top:2px}
   .cifra.bad .v{color:var(--rojo)}
   .cifra.warn .v{color:var(--ambar)}
   .espera{margin-top:12px;border-top:1px solid var(--linea);padding-top:11px}
@@ -278,44 +324,70 @@
 <!-- LA APLICACION -->
 <div id="app" hidden style="display:flex;flex-direction:column;height:100%">
   <div class="barra">
-    <svg class="marca" viewBox="0 0 192 192" aria-hidden="true"><rect width="192" height="192" rx="42" fill="#101012"></rect><rect x="40" y="40" width="112" height="24" fill="#f7f7f9"></rect><rect x="40" y="128" width="112" height="24" fill="#f7f7f9"></rect><path d="M140 52 L52 140" stroke="#101012" stroke-width="47"></path><path d="M140 52 L52 140" stroke="#f0a830" stroke-width="24"></path></svg>
-    <div class="t" id="titulo">Zeno</div>
+    <div style="flex:1">
+      <span class="fecha" id="fecha"></span>
+      <div class="t" id="titulo">Zeno</div>
+    </div>
+    <button class="icono" id="btn-buscar" aria-label="Buscar">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+    </button>
     <button class="salir" id="btn-salir">salir</button>
   </div>
 
   <main>
     <div id="tiron"><span class="rueda"></span><span id="tiron-texto"></span></div>
     <section id="v-hoy"></section>
-    <section id="v-pendientes" hidden></section>
-    <section id="v-negocios" hidden></section>
+    <!-- TRABAJO se come a Negocios: mirar como va el negocio y decidir que apruebas es el mismo
+         momento, y eran dos pestañas que obligaban a saltar entre ellas para decidir una cosa. -->
+    <section id="v-trabajo" hidden>
+      <div id="v-negocios"></div>
+      <div id="v-pendientes"></div>
+    </section>
     <section id="v-personal" hidden></section>
-    <section id="v-chat" hidden>
-      <div id="burbujas" class="burbujas"></div>
-    </section>
-    <section id="v-buscar" hidden>
-      <div class="cajabuscar">
-        <input id="q" class="buscador" type="search" enterkeyhint="search"
-               autocomplete="off" autocapitalize="off" autocorrect="off"
-               placeholder="busca en la documentación">
-        <button id="limpiar" class="limpiar" hidden aria-label="borrar">✕</button>
-      </div>
-      <div id="resultados"></div>
-    </section>
   </main>
 
-  <div id="escribir" class="escribir" hidden>
-    <input id="pregunta" placeholder="pregúntale lo que sea" autocomplete="off">
-    <button id="enviar" class="enviar">↑</button>
-  </div>
+  <button class="flotante" id="btn-chat" aria-label="Preguntar a Zeno">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.4-.6L3 21l1.8-4.9A8.3 8.3 0 0 1 3.7 11 8.4 8.4 0 0 1 12 3h.5a8.4 8.4 0 0 1 8.5 8Z"></path>
+    </svg>
+  </button>
 
   <nav class="pie">
     <button data-vista="hoy" class="on">Hoy</button>
-    <button data-vista="pendientes">Pendiente</button>
-    <button data-vista="negocios">Negocios</button>
+    <button data-vista="trabajo">Trabajo</button>
     <button data-vista="personal">Personal</button>
-    <button data-vista="chat">Chat</button>
-    <button data-vista="buscar">Buscar</button>
   </nav>
+</div>
+
+<!-- El chat y buscar son CAPAS, no pestañas: se abren desde donde estes, se usan y se cierran. -->
+<div id="capa-chat" class="capa" hidden>
+  <div class="cabecera">
+    <div class="t">Preguntar a Zeno</div>
+    <button class="salir" data-cerrar="capa-chat">cerrar</button>
+  </div>
+  <div class="cuerpo"><div id="burbujas" class="burbujas"></div></div>
+  <div id="escribir" class="escribir">
+    <input id="pregunta" placeholder="pregúntale lo que sea" autocomplete="off">
+    <button id="enviar" class="enviar">↑</button>
+  </div>
+</div>
+
+<div id="capa-buscar" class="capa" hidden>
+  <div class="cabecera">
+    <div class="t">Buscar</div>
+    <button class="salir" data-cerrar="capa-buscar">cerrar</button>
+  </div>
+  <div class="cuerpo">
+    <div class="cajabuscar">
+      <input id="q" class="buscador" type="search" enterkeyhint="search"
+             autocomplete="off" autocapitalize="off" autocorrect="off"
+             placeholder="busca en la documentación">
+      <button id="limpiar" class="limpiar" hidden aria-label="borrar">✕</button>
+    </div>
+    <div id="resultados"></div>
+  </div>
 </div>
 
 <script>
@@ -408,7 +480,7 @@ async function comprobarCodigo() {
 function dentro(t) {
   token = t; guarda.poner(t);
   $("#pantalla-login").hidden = true; $("#app").hidden = false;
-  ver("pendientes");
+  ver("hoy");
 }
 
 function salir() {
@@ -442,10 +514,15 @@ function pintaAccion(a, i, j) {
 
 function pintaColas(colas, total) {
   if (!colas.length) return "";
-  let h = `<div class="resumen">Todo lo pendiente: <b>${total}</b></div><div class="colas">`;
-  for (const c of colas)
-    h += `<div class="cola"><div class="n">${c.cuantos}</div>
-            <div class="q">${esc(c.titulo)}<br><span>${esc(c.negocio)}</span></div></div>`;
+  // FICHAS, no ocho cajas con un numero gigante. La pregunta que contesta esto es "cuanto queda y
+  // de que", y se contesta de un vistazo en una fila.
+  let h = '<div class="apartado">Esperan tu OK<span style="flex:1"></span>' +
+          '<span style="color:var(--apagado);font-variant-numeric:tabular-nums">' + total +
+          "</span></div><div class=\"fichas\">";
+  for (const c of colas) {
+    if (!c.cuantos) continue;
+    h += '<span class="ficha">' + esc(c.titulo) + " <b>" + c.cuantos + "</b></span>";
+  }
   return h + "</div>";
 }
 
@@ -815,23 +892,23 @@ async function activaAvisos(boton, llave) {
 // cifras dentro porque pidio "poder gestionar ambos negocios a la par".
 
 function pintaNegocio(n) {
-  let h = '<div class="negocio"><h2>' + esc(n.nombre) + "<em>" + esc(n.sub) + "</em></h2>" +
-          '<p class="de">segun ' + esc(n.fuente) + "</p>";
-  // Los fallos van DENTRO de la tarjeta del negocio del que hablan: "no se sabe como va GutLyn" es
-  // un dato distinto de "hay un error por ahi".
+  // Una TIRA por negocio, no una ficha: cuatro cifras desnudas con los digitos alineados y el
+  // color del negocio en el filo. Antes eran ocho cajitas grises que pesaban mas que lo que hay
+  // que decidir justo debajo.
+  let h = '<div class="negocio ' + (n.id === "gutlyn" ? "gutlyn" : "") + '">' +
+          '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">' +
+          '<b style="font-size:13.5px">' + esc(n.nombre) + "</b><span style=\"flex:1\"></span>" +
+          '<span style="color:var(--apagado);font-size:12px">' + (n.pendiente || 0) +
+          " esperan</span></div>";
   for (const f of n.fallos || [])
     h += '<div class="aviso-fallo">' + esc(f) + "</div>";
-
   h += '<div class="cifras">';
-  for (const k of n.kpis || [])
-    h += '<div class="cifra ' + (k.alerta || "") + '"><div class="k">' + esc(k.k) +
-         '</div><div class="v">' + esc(k.v) + "</div></div>";
-  h += "</div>";
-
-  h += '<div class="espera"><div class="t">Espera tu OK: <b>' + (n.pendiente || 0) + "</b></div>";
-  for (const c of n.colas || [])
-    h += '<a href="#" data-cola="pendientes">' + esc(c.titulo) +
-         "<span>" + c.cuantos + "</span></a>";
+  // Cuatro: las que caben de un vistazo en un movil. El resto vive en el cockpit y en Xrise, que
+  // es donde se analiza; aqui solo hace falta saber si algo se ha torcido.
+  for (const k of (n.kpis || []).slice(0, 4))
+    h += '<div class="cifra"><div class="v" style="' +
+         (k.alerta === "bad" ? "color:var(--rojo)" : k.alerta === "warn" ? "color:var(--ambar)" : "") +
+         '">' + esc(k.v) + '</div><div class="k">' + esc(k.k) + "</div></div>";
   return h + "</div></div>";
 }
 
@@ -847,7 +924,7 @@ async function cargaNegocios() {
     // Cada cola lleva a la pestaña donde se decide, que es la que ya existe.
     c.querySelectorAll("[data-cola]").forEach(a => a.onclick = (e) => {
       e.preventDefault();
-      ver("pendientes");
+      ver("trabajo");
     });
   } catch (e) {
     c.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
@@ -1312,24 +1389,47 @@ function enchufaBotonesDeCuenta(c) {
 }
 
 // ---------------------------------------------------------------- navegar
-const TITULOS = { hoy: "Zeno", pendientes: "Lo que espera tu OK", negocios: "Los dos negocios",
-                  personal: "Correo y agenda", chat: "Chat", buscar: "Buscar" };
+//
+// TRES pestañas, y son sitios donde se esta. El chat y buscar son capas que se abren desde donde
+// estes: preguntar y buscar no son lugares a los que ir, son cosas que haces sin moverte.
+
+const TITULOS = { hoy: "Buenos días", trabajo: "Trabajo", personal: "Personal" };
+const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+               "septiembre", "octubre", "noviembre", "diciembre"];
+
+function saludo(d) {
+  const h = d.getHours();
+  return h < 6 ? "Buenas noches" : h < 14 ? "Buenos días"
+       : h < 21 ? "Buenas tardes" : "Buenas noches";
+}
+
 function ver(vista) {
-  for (const v of ["hoy", "pendientes", "negocios", "personal", "chat", "buscar"])
-    $("#v-" + v).hidden = v !== vista;
+  for (const v of ["hoy", "trabajo", "personal"]) $("#v-" + v).hidden = v !== vista;
   document.querySelectorAll(".pie button").forEach(b =>
     b.classList.toggle("on", b.dataset.vista === vista));
-  $("#titulo").textContent = TITULOS[vista];
+
+  const ahora = new Date();
+  $("#titulo").textContent = vista === "hoy" ? saludo(ahora) : TITULOS[vista];
+  // La fecha solo en Hoy: en las otras dos no dice nada y roba la linea del titulo.
+  $("#fecha").textContent = vista === "hoy"
+    ? `${DIAS[ahora.getDay()]} ${ahora.getDate()} de ${MESES[ahora.getMonth()]}, ` +
+      ahora.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })
+    : "";
+
   if (vista === "hoy") cargaHoy();
-  if (vista === "pendientes") cargaPendientes();
-  if (vista === "negocios") cargaNegocios();
+  if (vista === "trabajo") { cargaNegocios(); cargaPendientes(); }
   if (vista === "personal") cargaPersonal();
-  if (vista === "chat") { cargaChat(); $("#pregunta").focus(); }
-  if (vista === "buscar") {
+  document.querySelector("main").scrollTop = 0;
+}
+
+function abreCapa(id) {
+  $("#" + id).hidden = false;
+  if (id === "capa-chat") { cargaChat(); $("#pregunta").focus(); }
+  if (id === "capa-buscar") {
     if (!$("#resultados").innerHTML) $("#resultados").innerHTML = sugerencias();
     $("#q").focus();
   }
-  $("#escribir").hidden = vista !== "chat";
 }
 
 // ---------------------------------------------------------------- tirar para actualizar
@@ -1355,10 +1455,8 @@ function recargaVista() {
   const actual = document.querySelector(".pie button.on")?.dataset.vista || "hoy";
   // Al tirar para actualizar NO se vuelve a narrar: el texto ya esta escrito y pagado para hoy.
   if (actual === "hoy") return cargaHoy();
-  if (actual === "buscar") return busca();
   if (actual === "personal") return cargaPersonal();
-  if (actual === "negocios") return cargaNegocios();
-  if (actual === "chat") return;          // recargar un chat seria borrar la conversacion
+  cargaNegocios();
   return cargaPendientes();
 }
 
@@ -1411,9 +1509,13 @@ $("#resultados").onclick = (e) => {
   busca();
 };
 document.querySelectorAll(".pie button").forEach(b => b.onclick = () => ver(b.dataset.vista));
+$("#btn-chat").onclick = () => abreCapa("capa-chat");
+$("#btn-buscar").onclick = () => abreCapa("capa-buscar");
+document.querySelectorAll("[data-cerrar]").forEach(b =>
+  b.onclick = () => { $("#" + b.dataset.cerrar).hidden = true; });
 
 // Si ya había sesión, se entra directo. Si el token ya no vale, `api` hace salir() solo.
-if (token) { $("#pantalla-login").hidden = true; $("#app").hidden = false; ver("pendientes"); }
+if (token) { $("#pantalla-login").hidden = true; $("#app").hidden = false; ver("hoy"); }
 </script>
 </body>
 </html>
