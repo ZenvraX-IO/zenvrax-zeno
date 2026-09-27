@@ -528,12 +528,25 @@ async function conectaCuenta(negocio, boton) {
 
 function pintaCuentas(cuentas) {
   let h = "";
+  // Un buzon puede tener dos nombres. Si dos cuentas conectadas apuntan al MISMO buzon, la segunda
+  // es un alias: se dice, en vez de enseñar dos filas que parecen dos bandejas y no lo son.
+  const buzones = {};
+  for (const c of cuentas) if (c.conectada && c.buzon) buzones[c.buzon] = (buzones[c.buzon] || 0) + 1;
+  const vistos = {};
   for (const c of cuentas) {
     const pendiente = !c.conectada;
-    h += '<div class="cuenta"><span class="punto' + (c.conectada ? " si" : "") + '"></span>' +
-         '<div class="c"><b>' + esc(c.cuenta) + '</b><span>' +
-         (c.conectada ? "solo lectura" : c.configurada ? "sin conectar" : "falta configurarla") +
-         "</span></div>";
+    let esAlias = false;
+    if (c.conectada && c.buzon) {
+      esAlias = buzones[c.buzon] > 1 && vistos[c.buzon];
+      vistos[c.buzon] = true;
+    }
+    let estado;
+    if (esAlias) estado = "alias de " + c.buzon + ", misma bandeja";
+    else if (c.conectada) estado = "solo lectura";
+    else estado = c.configurada ? "sin conectar" : "falta configurarla";
+    h += '<div class="cuenta"><span class="punto' + (c.conectada && !esAlias ? " si" : "") +
+         '"></span>' +
+         '<div class="c"><b>' + esc(c.cuenta) + "</b><span>" + esc(estado) + "</span></div>";
     if (pendiente && c.configurada)
       h += '<button class="b primaria" data-conectar="' + esc(c.negocio) + '">Conectar</button>';
     else if (c.conectada)

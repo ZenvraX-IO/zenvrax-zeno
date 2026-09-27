@@ -203,7 +203,25 @@ def guarda_permiso(negocio: str, codigo: str) -> dict:
                       "caduca": time.time() + int(t.get("expires_in", 3600)) - 60,
                       "permisos": t.get("scope", ""), "cuenta": CUENTAS[negocio]}
     _guarda_cofre(cofre)
-    return {"negocio": negocio, "cuenta": CUENTAS[negocio], "permisos": t.get("scope", "")}
+    # A QUE BUZON ha dado permiso DE VERDAD, preguntandoselo a Google en vez de suponerlo. Medido el
+    # 2026-09-27: `ghidalgo@gutlyn.com` resulto ser un ALIAS de `ghidalgo@zenvrax.com`, asi que las
+    # dos autorizaciones daban el mismo buzon y Zeno pintaba cada correo dos veces. Sin este dato no
+    # habia forma de saberlo desde dentro: los dos permisos parecian dos cuentas distintas.
+    cofre[negocio]["buzon"] = _pregunta_el_buzon(negocio) or CUENTAS[negocio]
+    _guarda_cofre(cofre)
+    return {"negocio": negocio, "cuenta": CUENTAS[negocio],
+            "buzon": cofre[negocio]["buzon"], "permisos": t.get("scope", "")}
+
+
+def _pregunta_el_buzon(negocio: str) -> str:
+    """El correo real del buzon al que se ha dado permiso. Cadena vacia si no se puede saber."""
+    try:
+        return str(pide(negocio, "https://gmail.googleapis.com/gmail/v1/users/me/profile")
+                   .get("emailAddress") or "")
+    except Exception:                                    # noqa: BLE001
+        # No es motivo para tumbar la autorizacion recien concedida: se cae al valor supuesto y la
+        # proxima lectura lo reintenta.
+        return ""
 
 
 def olvida(negocio: str) -> bool:
@@ -217,7 +235,10 @@ def olvida(negocio: str) -> bool:
 def conectadas() -> dict:
     """Que cuentas han dado permiso y con que alcance. Nunca devuelve los tokens."""
     cofre = _lee_cofre()
-    return {n: {"cuenta": d.get("cuenta"), "permisos": d.get("permisos", "").split(),
+    return {n: {"cuenta": d.get("cuenta"),
+                # El buzon REAL. Si coincide en dos negocios, es que uno es alias del otro.
+                "buzon": d.get("buzon") or d.get("cuenta"),
+                "permisos": d.get("permisos", "").split(),
                 "caduca_en_segundos": max(0, int(d.get("caduca", 0) - time.time()))}
             for n, d in cofre.items()}
 

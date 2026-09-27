@@ -249,3 +249,72 @@ def test_el_enlace_no_repite_ningun_parametro(monkeypatch):
     repetidos = {k: v for k, v in trozos.items() if len(v) > 1}
     assert not repetidos, f"Google rechaza los parametros repetidos: {repetidos}"
     assert trozos["state"] == ["vale-de-un-solo-uso"], "el vale tiene que ser EL state, no otro mas"
+
+
+# ------------------------------------------------- un buzon con dos nombres se lee UNA vez
+
+def test_dos_autorizaciones_al_mismo_buzon_no_duplican_el_correo(monkeypatch):
+    """PASO DE VERDAD el 2026-09-27. Se dio por hecho que `ghidalgo@zenvrax.com` y
+    `ghidalgo@gutlyn.com` eran dos cuentas de Google, porque son dos dominios y los dos tienen
+    Workspace. Preguntandoselo a Google: mismo buzon, 498 mensajes, mismo historyId. El segundo es
+    un ALIAS.
+
+    Resultado en pantalla: cada correo aparecia dos veces, uno etiquetado ZENVRAX y otro GUTLYN. Y
+    lo peor no era el duplicado, era que la etiqueta mentia: decia de que permiso venia, no de que
+    negocio era.
+    """
+    monkeypatch.setattr(google, "conectadas", lambda: {
+        "zenvrax": {"cuenta": "ghidalgo@zenvrax.com", "buzon": "ghidalgo@zenvrax.com"},
+        "gutlyn": {"cuenta": "ghidalgo@gutlyn.com", "buzon": "ghidalgo@zenvrax.com"}})
+    leidos = []
+    monkeypatch.setattr(personal, "correos",
+                        lambda n, **k: leidos.append(n) or [{"asunto": "uno", "negocio": n}])
+    monkeypatch.setattr(personal, "agenda", lambda n, **k: [])
+    datos, fallos = personal.bandeja()
+    assert len(leidos) == 1, f"el mismo buzon se ha leido {len(leidos)} veces"
+    assert len(datos["correos"]) == 1, "el correo sale duplicado"
+    assert not fallos
+    assert datos["buzones"][0]["alias_de"] == ["gutlyn"], "se dice que gutlyn es el alias"
+
+
+def test_dos_buzones_de_verdad_se_siguen_leyendo_los_dos(monkeypatch):
+    """El arreglo de arriba no puede colapsar dos buzones que SI son distintos: eso escondería la
+    mitad del correo y nadie lo notaria, que es peor que el duplicado."""
+    monkeypatch.setattr(google, "conectadas", lambda: {
+        "zenvrax": {"buzon": "a@zenvrax.com"}, "gutlyn": {"buzon": "b@gutlyn.com"}})
+    leidos = []
+    monkeypatch.setattr(personal, "correos",
+                        lambda n, **k: leidos.append(n) or [{"asunto": n, "negocio": n}])
+    monkeypatch.setattr(personal, "agenda", lambda n, **k: [])
+    datos, _ = personal.bandeja()
+    assert sorted(leidos) == ["gutlyn", "zenvrax"]
+    assert len(datos["correos"]) == 2
+
+
+def test_el_negocio_sale_de_a_quien_iba_el_correo():
+    """Con un alias, leer con el permiso de Zenvrax no dice nada del negocio. Lo que lo dice es la
+    direccion a la que llego, y por eso se piden las cabeceras Delivered-To, To y Cc."""
+    negocios = ["zenvrax", "gutlyn"]
+    assert personal._de_quien_es("ghidalgo@gutlyn.com", negocios) == "gutlyn"
+    assert personal._de_quien_es("Gustavo <GHIDALGO@GUTLYN.COM>", negocios) == "gutlyn"
+    # Otra direccion del mismo dominio tambien es del negocio: no se compara la direccion entera.
+    assert personal._de_quien_es("hola@gutlyn.com", negocios) == "gutlyn"
+    assert personal._de_quien_es("ghidalgo@zenvrax.com", negocios) == "zenvrax"
+    # Lo que no va a ninguno de los alias cae en el dueño del buzon, no se pierde ni se inventa.
+    assert personal._de_quien_es("cualquiera@otra.com", negocios) == "zenvrax"
+    assert personal._de_quien_es("", negocios) == "zenvrax"
+
+
+def test_un_dominio_que_es_sufijo_de_otro_no_se_confunde():
+    """`gutlyn.com` y `migutlyn.com` comparten final. Comparar el texto suelto marcaria el segundo
+    como GutLyn; por eso se busca con la arroba delante."""
+    assert personal._de_quien_es("alguien@migutlyn.com", ["zenvrax", "gutlyn"]) == "zenvrax"
+
+
+def test_el_enlace_de_gmail_no_mete_el_correo_en_el_tramo_de_la_cuenta():
+    """PASO DE VERDAD: el enlace era `/mail/u/<correo>/`, y ese tramo espera el NUMERO de cuenta
+    (0, 1, 2). Con un correo, Gmail contesta "Temporary Error (404)" y el correo no se abre."""
+    enlace = personal._abre_correo("ghidalgo@zenvrax.com", "abc123")
+    assert "/mail/u/ghidalgo" not in enlace, "el correo no puede ir en el tramo /u/"
+    assert "authuser=" in enlace, "sin authuser abre en la sesion que haya delante, que es otra"
+    assert enlace.endswith("#inbox/abc123")

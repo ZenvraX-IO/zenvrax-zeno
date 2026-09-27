@@ -1,6 +1,20 @@
 # -*- coding: utf-8 -*-
 """El correo y la agenda del operador. SOLO LECTURA, y sin guardar nada.
 
+UN BUZON PUEDE TENER VARIOS NOMBRES, y eso rompió el diseño inicial. Se dio por hecho que
+`ghidalgo@zenvrax.com` y `ghidalgo@gutlyn.com` eran dos cuentas de Google separadas, porque son dos
+dominios y los dos tienen Workspace. Medido el 2026-09-27 preguntándole a Google: **son el mismo
+buzón**, 498 mensajes y el mismo `historyId` en las dos autorizaciones. El segundo es un alias.
+
+Leer "las dos" era entonces leer dos veces lo mismo, y cada correo salía duplicado en la pantalla.
+Así que ahora:
+
+  · Cada buzón se lee UNA vez, aunque tenga dos autorizaciones apuntándole.
+  · El negocio de cada correo sale de **la dirección a la que llegó** (`Delivered-To`, `To`, `Cc`),
+    no de con qué permiso se leyó. Un correo dirigido al alias de GutLyn se marca GutLyn aunque se
+    lea con el permiso de Zenvrax, que es lo que el operador necesita distinguir.
+  · La agenda no se puede repartir: un alias no tiene calendario propio.
+
 QUE NO HACE, y es lo importante:
 
   · **No guarda ni un correo.** Se leen, se resumen para la pregunta que se esta contestando, y se
@@ -8,15 +22,14 @@ QUE NO HACE, y es lo importante:
     exactamente lo que toda esta arquitectura evita.
   · **No responde ni archiva.** Con los permisos de hoy (`gmail.readonly`) no puede, y cuando pueda
     seguira necesitando el OK: enviar un correo sale al mundo igual que publicar un post.
-  · **No mezcla las dos cuentas.** Cada una llega con su negocio puesto y se muestra etiquetada.
 
 LO QUE SE PIDE A GOOGLE, y por que asi:
 
   · Del correo, solo la BANDEJA DE ENTRADA sin leer de los ultimos dias. Pedir todo el buzon seria
     lento, caro en contexto y no contesta mejor a "que tengo pendiente".
-  · Solo las CABECERAS (de, asunto, fecha) y el resumen corto que Google ya da. El cuerpo entero
-    de veinte correos no cabe en un contexto sin encarecer cada pregunta, y para triar no hace
-    falta.
+  · Solo las CABECERAS (de, para, asunto, fecha) y el resumen corto que Google ya da. El cuerpo
+    entero de veinte correos no cabe en un contexto sin encarecer cada pregunta, y para triar no
+    hace falta.
 """
 from __future__ import annotations
 
@@ -36,8 +49,37 @@ def _cabecera(mensaje: dict, nombre: str) -> str:
     return ""
 
 
-def correos(negocio: str, cuantos: int = 12, dias: int = 7) -> list[dict]:
-    """Los correos sin leer de la bandeja de una cuenta. Lanza NoAutorizado si no hay permiso."""
+def _abre_correo(buzon: str, hilo: str) -> str:
+    """El enlace que abre ese hilo en Gmail.
+
+    `?authuser=<correo>` y no `/mail/u/<correo>/`: ese tramo de la ruta espera el NUMERO de la
+    cuenta (0, 1, 2), y ponerle un correo hace que Gmail conteste "Temporary Error (404)". Pasó en
+    la primera prueba real, el 2026-09-27.
+    """
+    return ("https://mail.google.com/mail/?authuser=" + urllib.parse.quote(buzon)
+            + "#inbox/" + hilo)
+
+
+def _de_quien_es(destinos: str, negocios: list[str]) -> str:
+    """A que negocio pertenece un correo, segun la direccion a la que llego.
+
+    `negocios` viene ordenado: el primero es el dueño del buzon y hace de valor por defecto. Se
+    mira el dominio del alias, no la direccion entera, porque `ghidalgo@`, `hola@` y `info@` del
+    mismo dominio son el mismo negocio.
+    """
+    bajo = destinos.lower()
+    for negocio in negocios[1:]:
+        dominio = google.CUENTAS.get(negocio, "").rsplit("@", 1)[-1].lower()
+        if dominio and "@" + dominio in bajo:
+            return negocio
+    return negocios[0]
+
+
+def correos(negocio: str, cuantos: int = 12, dias: int = 7,
+            buzon: str = "", negocios: list[str] | None = None) -> list[dict]:
+    """Los correos sin leer de la bandeja de un buzon. Lanza NoAutorizado si no hay permiso."""
+    negocios = negocios or [negocio]
+    buzon = buzon or google.CUENTAS.get(negocio, "")
     desde = (datetime.now(timezone.utc) - timedelta(days=dias)).strftime("%Y/%m/%d")
     consulta = urllib.parse.quote(f"in:inbox is:unread after:{desde}")
     lista = google.pide(negocio, f"{GMAIL}/messages?maxResults={cuantos}&q={consulta}")
@@ -47,21 +89,27 @@ def correos(negocio: str, cuantos: int = 12, dias: int = 7) -> list[dict]:
         detalle = google.pide(
             negocio,
             f"{GMAIL}/messages/{m['id']}?format=metadata"
-            "&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date")
+            "&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date"
+            "&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Delivered-To")
+        destinos = " ".join(_cabecera(detalle, c) for c in ("Delivered-To", "To", "Cc"))
         fuera.append({
-            "negocio": negocio,
+            # El negocio sale de A QUIEN iba, no de con que permiso se leyo: con un alias, las dos
+            # autorizaciones son el mismo buzon y lo segundo no distingue nada.
+            "negocio": _de_quien_es(destinos, negocios),
             "de": _cabecera(detalle, "From"),
             "asunto": _cabecera(detalle, "Subject") or "(sin asunto)",
             "fecha": _cabecera(detalle, "Date"),
             "resumen": (detalle.get("snippet") or "").strip()[:200],
-            # El enlace abre el correo en Gmail: Zeno enseña, y el trabajo se hace donde ya se hace.
-            "abrir": f"https://mail.google.com/mail/u/{google.CUENTAS.get(negocio, '')}/#inbox/{m['id']}",
+            # El hilo y no el mensaje: es lo que entiende la direccion de Gmail. Zeno enseña, y el
+            # trabajo se hace donde ya se hace.
+            "abrir": _abre_correo(buzon, m.get("threadId") or m["id"]),
         })
     return fuera
 
 
-def agenda(negocio: str, dias: int = 3) -> list[dict]:
-    """Las citas de los proximos dias de una cuenta."""
+def agenda(negocio: str, dias: int = 3, buzon: str = "") -> list[dict]:
+    """Las citas de los proximos dias de un buzon."""
+    buzon = buzon or google.CUENTAS.get(negocio, "")
     ahora = datetime.now(timezone.utc)
     parametros = urllib.parse.urlencode({
         "timeMin": ahora.isoformat().replace("+00:00", "Z"),
@@ -72,6 +120,11 @@ def agenda(negocio: str, dias: int = 3) -> list[dict]:
     fuera = []
     for e in datos.get("items") or []:
         inicio = (e.get("start") or {})
+        enlace = e.get("htmlLink") or ""
+        if enlace:
+            # Mismo motivo que en el correo: sin decir de quien es la cuenta, el enlace abre en la
+            # sesion que el navegador tenga delante, que puede ser otra.
+            enlace += ("&" if "?" in enlace else "?") + "authuser=" + urllib.parse.quote(buzon)
         fuera.append({
             "negocio": negocio,
             "titulo": e.get("summary") or "(sin titulo)",
@@ -80,29 +133,54 @@ def agenda(negocio: str, dias: int = 3) -> list[dict]:
             "cuando": inicio.get("dateTime") or inicio.get("date") or "",
             "todo_el_dia": "date" in inicio and "dateTime" not in inicio,
             "con": [a.get("email") for a in (e.get("attendees") or []) if a.get("email")][:5],
-            "abrir": e.get("htmlLink") or "",
+            "abrir": enlace,
         })
     return fuera
 
 
-def bandeja() -> tuple[dict, list[str]]:
-    """El correo y la agenda de las DOS cuentas, cada uno con su negocio y sus fallos aparte.
+def _por_buzon(conectadas: dict) -> dict[str, list[str]]:
+    """Agrupa los negocios conectados por el buzon REAL al que apuntan.
 
-    Una cuenta sin permiso o caida NO tumba la otra: se devuelve lo que hay y se dice lo que falta.
-    Un resumen corto sin aviso se lee como "tienes poco correo", y con eso se toman decisiones.
+    Es la pieza que evita el duplicado: dos autorizaciones sobre el mismo buzon (porque una es un
+    alias de la otra) forman UN grupo y se leen una sola vez.
     """
-    fuera = {"correos": [], "agenda": [], "cuentas": google.conectadas()}
+    grupos: dict[str, list[str]] = {}
+    for negocio, d in conectadas.items():
+        buzon = (d.get("buzon") or d.get("cuenta") or negocio).lower()
+        grupos.setdefault(buzon, []).append(negocio)
+    return grupos
+
+
+def bandeja() -> tuple[dict, list[str]]:
+    """El correo y la agenda de los buzones conectados, con sus fallos aparte.
+
+    Un buzon caido NO tumba al otro: se devuelve lo que hay y se dice lo que falta. Un resumen corto
+    sin aviso se lee como "tienes poco correo", y con eso se toman decisiones.
+    """
+    conectadas = google.conectadas()
+    fuera: dict = {"correos": [], "agenda": [], "cuentas": conectadas, "buzones": []}
     fallos = []
     for negocio in google.CUENTAS:
-        if negocio not in fuera["cuentas"]:
+        if negocio not in conectadas:
             fallos.append(f"{google.CUENTAS[negocio]}: sin conectar todavia")
-            continue
-        for etiqueta, funcion in (("correos", correos), ("agenda", agenda)):
-            try:
-                fuera[etiqueta] += funcion(negocio)
-            except google.NoAutorizado as e:
-                fallos.append(f"{google.CUENTAS[negocio]} ({etiqueta}): {e}")
-            except Exception as e:                        # noqa: BLE001
-                fallos.append(f"{google.CUENTAS[negocio]} ({etiqueta}): {type(e).__name__}")
+
+    for buzon, negocios in _por_buzon(conectadas).items():
+        # El primero manda: es con cuyo permiso se lee y el negocio por defecto de lo que llegue.
+        principal = negocios[0]
+        fuera["buzones"].append({"buzon": buzon, "negocios": negocios,
+                                 "alias_de": negocios[1:]})
+        try:
+            fuera["correos"] += correos(principal, buzon=buzon, negocios=negocios)
+        except google.NoAutorizado as e:
+            fallos.append(f"{buzon} (correos): {e}")
+        except Exception as e:                            # noqa: BLE001
+            fallos.append(f"{buzon} (correos): {type(e).__name__}")
+        try:
+            fuera["agenda"] += agenda(principal, buzon=buzon)
+        except google.NoAutorizado as e:
+            fallos.append(f"{buzon} (agenda): {e}")
+        except Exception as e:                            # noqa: BLE001
+            fallos.append(f"{buzon} (agenda): {type(e).__name__}")
+
     fuera["agenda"].sort(key=lambda c: c["cuando"])
     return fuera, fallos

@@ -262,6 +262,9 @@ async def google_cuentas(authorization: str = Header(default="")):
         ident, _ = google._cliente(negocio)
         cuentas.append({"negocio": negocio, "cuenta": correo,
                         "conectada": negocio in conectadas,
+                        # El buzon REAL al que apunta. Si dos cuentas traen el mismo, una es alias
+                        # de la otra y el front tiene que decirlo en vez de fingir que son dos.
+                        "buzon": conectadas.get(negocio, {}).get("buzon", ""),
                         # Sin cliente configurado el botón no puede funcionar: se dice, en vez de
                         # dejar que el operador pulse y se coma un error de Google.
                         "configurada": bool(ident),
