@@ -179,3 +179,24 @@ def test_el_chat_no_promete_ejecutar():
     from servicio import chat as chat_mod
     assert "no puedes" in chat_mod.SISTEMA or "todavía no puedes" in chat_mod.SISTEMA
     assert "Inventar" in chat_mod.SISTEMA, "el prompt tiene que prohibir inventar cifras"
+
+
+def test_la_respuesta_no_sale_con_asteriscos_ni_raya_larga():
+    """DOS REGLAS DEL OPERADOR, y el prompt no las garantiza.
+
+    En la primera prueba real, con la prohibición escrita en el sistema, el modelo contestó
+    `**Hoy tienes pendiente:**`. Un prompt es una petición; esto es la garantía.
+    """
+    from servicio.chat import _limpia
+    assert _limpia("**Hoy tienes pendiente:**") == "Hoy tienes pendiente:"
+    assert _limpia("los *44* posts") == "los 44 posts"
+    assert _limpia("una cosa — y otra") == "una cosa, y otra"
+    assert _limpia("rango 10–20 aqui") == "rango 10, 20 aqui"
+    assert _limpia("sin nada raro") == "sin nada raro", "no puede estropear lo que ya estaba bien"
+
+
+def test_la_limpieza_se_aplica_de_verdad_a_la_respuesta():
+    """Que la función exista no sirve de nada si `responde` no la llama."""
+    import inspect
+    from servicio import chat as chat_mod
+    assert "_limpia(texto)" in inspect.getsource(chat_mod.responde)

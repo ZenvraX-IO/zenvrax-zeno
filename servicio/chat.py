@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from datetime import date
@@ -63,6 +64,29 @@ REGLAS, y son duras:
   - Nunca propongas ejecutar una acción tú mismo: todavía no puedes. Di dónde está el botón.
   - En español, directo, sin rodeos ni disculpas. Frases cortas. Sin asteriscos y sin raya larga.
 """
+
+
+def _limpia(texto: str) -> str:
+    """Quita los asteriscos y la raya larga de la respuesta.
+
+    El operador tiene dos reglas duras sobre esto y el prompt NO las garantiza: en la primera prueba
+    real el modelo contesto con `**Hoy tienes pendiente:**` teniendo la prohibicion escrita. Un
+    prompt es una peticion; esto es la garantia. Cinturon y tirantes, porque la regla es del
+    operador y no de una preferencia mia.
+    """
+    # Se quita el asterisco a secas, SIN expresion regular de captura. La primera version usaba
+    # una re.sub con grupo y referencia ; al pasar por el shell la referencia se perdio y la
+    # expresion BORRABA el texto en vez de conservarlo. Se vio probando la funcion con tres
+    # casos, no leyendola. Quitar un caracter no necesita una regex.
+    texto = texto.replace("*", "")
+    texto = texto.replace("—", ", ").replace("–", ", ")   # raya larga y media
+    texto = re.sub(r"[ 	]{2,}", " ", texto)
+    # La raya sustituida deja un espacio antes de la coma. Se quita SIN grupo de captura: es la
+    # tercera vez en esta sesion que una referencia de grupo se pierde al pasar el codigo por el
+    # shell y la expresion acaba borrando lo que debia conservar.
+    for signo in (",", ".", ";", ":"):
+        texto = texto.replace(" " + signo, signo)
+    return texto.strip()
 
 
 def _hoy() -> str:
@@ -123,7 +147,7 @@ def responde(pregunta: str, pendientes: list, colas: list, fallos: list,
     coste = entrada / 1e6 * PRECIO_ENTRADA + salida / 1e6 * PRECIO_SALIDA
     texto = "".join(b.get("text", "") for b in datos.get("content", []) if b.get("type") == "text")
     return {
-        "respuesta": texto.strip(),
+        "respuesta": _limpia(texto),
         "modelo": MODELO,
         "coste_usd": round(coste, 6),
         "preguntas_hoy": _gastado[_hoy()],
