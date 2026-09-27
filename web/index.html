@@ -6,8 +6,9 @@
 <meta name="theme-color" content="#101012">
 <title>Zeno</title>
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="/img/favicon.png">
-<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="icon" sizes="32x32" href="/img/favicon.png?v=20260927c">
+<link rel="icon" sizes="64x64" href="/img/favicon-64.png?v=20260927c">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png?v=20260927c">
 <style>
   :root{
     --negro:#101012; --carbon:#17171b; --linea:#26262c; --texto:#f2f2f4; --gris:#9a9aa4;
@@ -26,14 +27,11 @@
          border-bottom:1px solid var(--linea);position:sticky;top:0;background:var(--negro);z-index:5}
   .barra .t{font-weight:600;flex:1}
   .barra .salir{color:var(--gris);background:none;border:0;font-size:13px}
-  .marca{width:26px;height:26px;border-radius:7px;background:var(--negro);border:1px solid var(--linea);
-         position:relative;flex:0 0 auto}
-  .marca i::before,.marca i::after{content:"";position:absolute;left:5px;right:5px;height:4px;background:#fff}
-  .marca i::before{top:5px} .marca i::after{bottom:5px}
-  .marca s{position:absolute;left:5px;right:5px;top:11px;height:4px;background:#fff;
-           transform:rotate(-27deg)}
-  .marca u{position:absolute;left:11px;top:9px;width:5px;height:5px;border-radius:50%;
-           background:var(--ambar);z-index:2}
+  /* LA MARCA ES LA MISMA QUE EL ICONO, y por eso es un SVG con la geometria del generador y no un
+     dibujo aparte en CSS. Lo que habia era la PRIMERA version, la que el operador rechazo: la
+     diagonal en blanco y un punto ambar. Convivia con un icono distinto en la pestaña y en la
+     pantalla de inicio, o sea tres marcas para una aplicacion. */
+  .marca{width:26px;height:26px;flex:0 0 auto;display:block}
 
   /* `overscroll-behavior:contain` apaga el rebote propio del navegador: sin eso, en iOS el gesto
      lo captura Safari y el tiron de recargar no llega nunca a la aplicacion. */
@@ -154,11 +152,7 @@
   .cita .d span{color:var(--gris);font-size:11.5px}
 
   .login{max-width:360px;margin:0 auto;padding:50px 4px}
-  .login .marca{width:54px;height:54px;border-radius:14px;margin:0 auto 18px}
-  .login .marca i::before,.login .marca i::after{left:10px;right:10px;height:8px}
-  .login .marca i::before{top:10px} .login .marca i::after{bottom:10px}
-  .login .marca s{left:10px;right:10px;top:23px;height:8px}
-  .login .marca u{left:23px;top:20px;width:11px;height:11px}
+  .login .marca{width:64px;height:64px;margin:0 auto 18px}
   .login h1{text-align:center;margin:0 0 4px;font-size:21px}
   .login p{text-align:center;color:var(--gris);margin:0 0 24px;font-size:13px}
   .campo{width:100%;background:#0d0d10;border:1px solid var(--linea);border-radius:10px;
@@ -171,7 +165,7 @@
 
 <!-- ENTRAR -->
 <div id="pantalla-login" class="login">
-  <div class="marca"><i></i><s></s><u></u></div>
+  <svg class="marca" viewBox="0 0 192 192" aria-hidden="true"><rect width="192" height="192" rx="42" fill="#101012"></rect><rect x="40" y="40" width="112" height="24" fill="#f7f7f9"></rect><rect x="40" y="128" width="112" height="24" fill="#f7f7f9"></rect><path d="M140 52 L52 140" stroke="#101012" stroke-width="47"></path><path d="M140 52 L52 140" stroke="#f0a830" stroke-width="24"></path></svg>
   <h1>Zeno</h1>
   <p>Lo que espera tu OK, de los dos negocios</p>
   <!-- LA PUERTA DE CADA DIA: una sola clave, sin codigo de seis cifras, y la sesion dura tres meses.
@@ -202,7 +196,7 @@
 <!-- LA APLICACION -->
 <div id="app" hidden style="display:flex;flex-direction:column;height:100%">
   <div class="barra">
-    <div class="marca"><i></i><s></s><u></u></div>
+    <svg class="marca" viewBox="0 0 192 192" aria-hidden="true"><rect width="192" height="192" rx="42" fill="#101012"></rect><rect x="40" y="40" width="112" height="24" fill="#f7f7f9"></rect><rect x="40" y="128" width="112" height="24" fill="#f7f7f9"></rect><path d="M140 52 L52 140" stroke="#101012" stroke-width="47"></path><path d="M140 52 L52 140" stroke="#f0a830" stroke-width="24"></path></svg>
     <div class="t" id="titulo">Zeno</div>
     <button class="salir" id="btn-salir">salir</button>
   </div>
