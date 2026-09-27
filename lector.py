@@ -45,26 +45,42 @@ class SinClave(RuntimeError):
 
 
 @dataclass
+class Accion:
+    """Una accion de un aviso concreto: su contrato y su destino real."""
+    etiqueta: str
+    op: str | None
+    efecto: str | None
+    coste_api: bool
+    url: str = ""
+
+    @property
+    def se_puede_abrir(self) -> bool:
+        """Solo lo que ABRE algo y trae una direccion de verdad. Lo que ejecuta no se pulsa todavia:
+        eso es J4 y pasa por el contrato, no por un enlace."""
+        return self.efecto == C.ABRE and self.url.startswith("http")
+
+
+@dataclass
 class Pendiente:
     """Algo que espera una decision del operador, con lo que hace falta saber para decidir."""
     negocio: str
     titulo: str
     cuerpo: str
-    acciones: list = field(default_factory=list)   # [(etiqueta, op|None, efecto|None, coste_api)]
+    acciones: list = field(default_factory=list)   # list[Accion]
     fuente: str = ""
 
     @property
     def publica_algo(self) -> bool:
-        return any(a[2] == C.PUBLICA for a in self.acciones)
+        return any(a.efecto == C.PUBLICA for a in self.acciones)
 
     @property
     def cuesta_dinero(self) -> bool:
-        return any(a[3] for a in self.acciones)
+        return any(a.coste_api for a in self.acciones)
 
     @property
     def sin_contrato(self) -> int:
         """Acciones que el catalogo no reconoce. No se ocultan: se cuentan y se dicen."""
-        return sum(1 for a in self.acciones if a[1] is None)
+        return sum(1 for a in self.acciones if a.op is None)
 
 
 def _pide(base: str, ruta: str, cabeceras: dict | None = None) -> dict | list:
@@ -105,14 +121,25 @@ def _indice_del_catalogo() -> dict:
 
 
 def _acciones(sistema: str, brutas: list, indice: dict) -> list:
+    """Cada accion del aviso cruzada con su contrato, CONSERVANDO su url real.
+
+    La url del catalogo lleva la plantilla (`.../preview?id={pid}`) porque se saca del codigo. La del
+    AVISO trae el identificador ya puesto. Sin ella, "Ver preview" no puede abrir nada: era un
+    `<span>` con texto, y el operador lo dijo a la primera: *"ver preview no funciona"*.
+
+    O sea: el catalogo dice QUE es la accion, el aviso dice DONDE.
+    """
     fuera = []
     for a in brutas or []:
         etiqueta = (a.get("label") or "").strip()
         ficha = indice.get((sistema, etiqueta))
-        fuera.append((etiqueta,
-                      ficha.op if ficha else None,
-                      ficha.efecto if ficha else None,
-                      bool(ficha and ficha.coste_api)))
+        fuera.append(Accion(
+            etiqueta=etiqueta,
+            op=ficha.op if ficha else None,
+            efecto=ficha.efecto if ficha else None,
+            coste_api=bool(ficha and ficha.coste_api),
+            url=a.get("url") or "",
+        ))
     return fuera
 
 
@@ -176,3 +203,31 @@ def documentacion(consulta: str) -> tuple[list, str, list[str]]:
     if err:
         return [], "no disponible", [f"conocimiento: {err}"]
     return datos.get("conocimiento") or [], datos.get("conocimiento_modo") or "?", []
+
+
+def pendiente_completo() -> tuple[list[dict], list[str]]:
+    """TODO lo que espera una decision, por cola, de los dos negocios.
+
+    POR QUE NO VALE `pendientes()`. Aquella lee los FEEDS de aviso, que estan hechos para dar una
+    cosa al dia: la de Xrise literalmente hace `LIMIT 1` y solo mira lo vencido. El operador lo vio
+    en cuanto abrio Zeno: *"no da todo lo pendiente en cada plataforma"*. Medido ese dia: 113
+    pendientes de verdad (82 en Zenvrax, 31 en GutLyn) y el feed enseñaba UNA.
+
+    Las dos siguen haciendo falta y no se sustituyen: `pendientes()` dice QUE HACER AHORA, con sus
+    botones y su contrato; esta dice CUANTO QUEDA. Son preguntas distintas.
+    """
+    colas, fallos = [], []
+    for etiqueta, base, ruta, cab in (
+            ("Zenvrax", COCKPIT, "/aios/pendiente-todo", None),
+            ("GutLyn", XRISE, "/dashboard/pendiente-todo", {"X-Zeno-Org": ORG})):
+        datos, err = _seguro(base, ruta, cab)
+        if err:
+            fallos.append(f"{etiqueta}: {err}")
+            continue
+        for c in datos.get("colas") or []:
+            colas.append({**c, "negocio": datos.get("negocio", etiqueta)})
+        # Los fallos parciales del otro lado (por ejemplo, que no se pueda contar el organico)
+        # viajan tal cual: un total corto sin aviso se lee como "hay poco pendiente".
+        fallos.extend(datos.get("fallos") or [])
+    colas.sort(key=lambda c: (-c["cuantos"], c["negocio"]))
+    return colas, fallos

@@ -35,6 +35,8 @@ CABECERA = {"Authorization": "Bearer jwt-bueno"}
 def _sesion_valida(monkeypatch):
     monkeypatch.setattr(sesion, "quien_es",
                         lambda t, ahora=None: sesion.Quien("u1", "owner", "yo@zenvrax.com"))
+    # El recuento por cola sale a la red en produccion: aqui se silencia salvo que el test lo pise.
+    monkeypatch.setattr(lector, "pendiente_completo", lambda: ([], []))
     yield
     sesion.limpiar_cache()
 
@@ -95,9 +97,9 @@ def test_un_sistema_caido_sale_en_la_respuesta(monkeypatch):
 def test_cada_pendiente_lleva_si_publica_y_si_cuesta(monkeypatch):
     """Es lo que Zeno aporta sobre mirar las dos pantallas. Sin estos campos, el front no puede
     marcar lo irreversible ni lo que gasta."""
-    p = lector.Pendiente(negocio="GutLyn", titulo="Post", cuerpo="",
-                         acciones=[("Aprobar y publicar", "claire.aprobar_y_publicar", "publica", False),
-                                   ("Regenerar", "claire.regenerar", "cambia_estado", True)])
+    p = lector.Pendiente(negocio="GutLyn", titulo="Post", cuerpo="", acciones=[
+        lector.Accion("Aprobar y publicar", "claire.aprobar_y_publicar", "publica", False),
+        lector.Accion("Regenerar", "claire.regenerar", "cambia_estado", True)])
     monkeypatch.setattr(lector, "pendientes", lambda: ([p], []))
     d = cliente.get("/api/pendientes", headers=CABECERA).json()["pendientes"][0]
     assert d["publica_algo"] is True and d["cuesta_dinero"] is True

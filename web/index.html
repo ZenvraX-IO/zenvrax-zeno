@@ -62,6 +62,12 @@
   .m-mundo{background:#40201c;color:#ffb3aa}
   .m-cuesta{background:var(--ambar-suave);color:#f3c579}
   .vacio{color:var(--gris);text-align:center;padding:40px 10px}
+  .colas{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px}
+  .cola{background:var(--carbon);border:1px solid var(--linea);border-radius:11px;
+        padding:10px 11px;display:flex;gap:10px;align-items:center}
+  .cola .n{font-size:22px;font-weight:600;color:var(--ambar);min-width:32px;text-align:right}
+  .cola .q{font-size:12px;line-height:1.3}
+  .cola .q span{color:var(--gris);font-size:11px}
 
   .buscador{width:100%;background:var(--carbon);border:1px solid var(--linea);border-radius:10px;
             padding:11px 13px;color:var(--texto);font-size:14px;margin-bottom:13px}
@@ -196,15 +202,29 @@ function salir() {
 
 // ---------------------------------------------------------------- lo que espera tu OK
 function pintaAccion(a) {
-  // El botón grande es "Ver preview" por decisión del operador (27-sep): lo irreversible NO puede
-  // ser lo más fácil de pulsar con el pulgar.
-  const esPreview = /preview|revisar|ver /i.test(a.etiqueta || "");
+  // Lo que ABRE se pinta como ENLACE de verdad y es el botón grande: decisión del operador
+  // (27-sep), lo irreversible no puede ser lo más fácil de pulsar con el pulgar.
+  //
+  // Antes todos eran <span>, o sea texto muerto: "ver preview no funciona", lo dijo la primera vez
+  // que lo abrió. Ahora lo que se puede abrir se abre, y lo que ejecuta dice POR QUÉ no se pulsa
+  // todavía en vez de fingir que es un botón.
   if (!a.op) return `<span class="b sin">${esc(a.etiqueta)} · sin contrato</span>`;
   const marcas = [];
   if (a.efecto === "publica") marcas.push('<span class="marca-accion m-mundo">sale al mundo</span>');
   if (a.coste_api) marcas.push('<span class="marca-accion m-cuesta">cuesta</span>');
-  const clase = esPreview ? "b primaria" : (a.coste_api ? "b gasta" : "b");
-  return `<span class="${clase}">${esc(a.etiqueta)} ${marcas.join(" ")}</span>`;
+  const texto = `${esc(a.etiqueta)} ${marcas.join(" ")}`;
+  if (a.se_puede_abrir)
+    return `<a class="b primaria" href="${esc(a.url)}" target="_blank" rel="noopener">${texto}</a>`;
+  return `<span class="b sin" title="Ejecutar desde Zeno llega en la fase siguiente">${texto}</span>`;
+}
+
+function pintaColas(colas, total) {
+  if (!colas.length) return "";
+  let h = `<div class="resumen">Todo lo pendiente: <b>${total}</b></div><div class="colas">`;
+  for (const c of colas)
+    h += `<div class="cola"><div class="n">${c.cuantos}</div>
+            <div class="q">${esc(c.titulo)}<br><span>${esc(c.negocio)}</span></div></div>`;
+  return h + "</div>";
 }
 
 async function cargaPendientes() {
@@ -215,6 +235,9 @@ async function cargaPendientes() {
     let html = "";
     // Los fallos van ARRIBA y siempre: una lista corta sin aviso se lee como "hay poco pendiente".
     for (const f of d.fallos || []) html += `<div class="aviso-fallo">No se ha podido leer ${esc(f)}</div>`;
+    // El recuento COMPLETO va arriba del todo: el feed de abajo da lo que toca hoy, y sin esto
+    // parecía que solo había una cosa pendiente cuando había 113.
+    html += pintaColas(d.colas || [], d.total_pendiente);
     const lista = d.pendientes || [];
     if (!lista.length) {
       html += '<div class="vacio">nada espera tu OK' +

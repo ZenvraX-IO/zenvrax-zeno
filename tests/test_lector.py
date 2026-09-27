@@ -83,7 +83,7 @@ def test_una_accion_que_el_catalogo_no_reconoce_se_marca_y_no_se_oculta(monkeypa
     lista, _ = lector.pendientes()
     assert len(lista) == 1
     assert lista[0].sin_contrato == 1, "una acción sin contrato tiene que contarse"
-    assert lista[0].acciones[0][1] is None
+    assert lista[0].acciones[0].op is None
 
 
 # --------------------------------------------------------------- lo peligroso va primero

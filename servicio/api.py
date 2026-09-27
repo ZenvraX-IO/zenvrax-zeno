@@ -110,8 +110,13 @@ async def pendientes(authorization: str = Header(default="")):
     """
     _quien(authorization)
     lista, fallos = lector.pendientes()
+    # Dos preguntas distintas en una respuesta: las COLAS dicen cuanto queda en total y el feed dice
+    # que hacer ahora. Con solo el feed parecia que habia una cosa pendiente cuando habia 113.
+    colas, fallos_colas = lector.pendiente_completo()
     return {
-        "fallos": fallos,
+        "fallos": fallos + fallos_colas,
+        "colas": colas,
+        "total_pendiente": sum(c["cuantos"] for c in colas),
         "pendientes": [{
             "negocio": p.negocio,
             "titulo": p.titulo,
@@ -119,8 +124,13 @@ async def pendientes(authorization: str = Header(default="")):
             "publica_algo": p.publica_algo,
             "cuesta_dinero": p.cuesta_dinero,
             "sin_contrato": p.sin_contrato,
-            "acciones": [{"etiqueta": e, "op": o, "efecto": ef, "coste_api": c}
-                         for e, o, ef, c in p.acciones],
+            # `url` y `se_puede_abrir` viajan para que el front pueda ENLAZAR lo que abre. Sin
+            # ellos los botones eran texto muerto: "ver preview no funciona", dicho por el operador
+            # la primera vez que lo uso.
+            "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
+                          "coste_api": a.coste_api, "url": a.url,
+                          "se_puede_abrir": a.se_puede_abrir}
+                         for a in p.acciones],
         } for p in lista],
     }
 
