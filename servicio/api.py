@@ -322,6 +322,18 @@ class Pin(BaseModel):
     pin: str
 
 
+class ValeDeAccion(BaseModel):
+    """El vale de una ejecucion.
+
+    Se declara AQUI y no se reutiliza el de la agenda, que vive doscientas lineas mas abajo. Con
+    `from __future__ import annotations` la anotacion es un texto que FastAPI resuelve al registrar
+    la ruta: si la clase todavia no existe, no falla al arrancar, se traga el modelo y trata el
+    cuerpo como un parametro de la URL. El endpoint respondia 422 "field required" en produccion y
+    el codigo se leia perfectamente bien. Lo encontro una prueba contra el servicio, no el import.
+    """
+    vale: str
+
+
 def _huella(token: str) -> str:
     """Identifica la sesion sin guardar el token. La ventana del PIN va por sesion, no global: un
     navegador olvidado abierto no puede dejar publicar desde otro sitio."""
@@ -360,7 +372,7 @@ async def accion_proponer(body: AccionPropuesta, authorization: str = Header(def
 
 
 @app.post("/api/accion/confirmar")
-async def accion_confirmar(body: Vale, authorization: str = Header(default="")):
+async def accion_confirmar(body: ValeDeAccion, authorization: str = Header(default="")):
     """LO UNICO que ejecuta. Cierra J4, y es lo que puede publicar en nombre del operador."""
     _, token = _quien(authorization)
     try:

@@ -638,3 +638,28 @@ def test_sin_turnos_el_chat_sigue_funcionando(monkeypatch):
     monkeypatch.setattr(api_mod.chat_mod, "responde", lambda *a, **k: {"respuesta": "ok"})
     assert cliente.post("/api/chat", headers=CABECERA,
                         json={"texto": "hola que tal"}).status_code == 200
+
+
+def test_ningun_endpoint_usa_un_modelo_declarado_mas_abajo():
+    """PASO DE VERDAD en la primera prueba de J4 contra produccion. `accion_confirmar` usaba el
+    modelo `Vale`, que se declara doscientas lineas mas abajo. Con `from __future__ import
+    annotations` la anotacion es un texto que FastAPI resuelve al registrar la ruta: si la clase no
+    existe todavia, NO falla al arrancar. Se traga el modelo, trata el cuerpo como parametro de la
+    URL, y el endpoint contesta 422 "field required" con el codigo leyendose perfectamente bien.
+
+    Es de los fallos que no se ven leyendo ni importando, solo llamando. Este test lo convierte en
+    algo que se ve leyendo.
+    """
+    arbol = ast.parse((RAIZ / "servicio" / "api.py").read_text(encoding="utf-8"))
+    linea_de = {n.name: n.lineno for n in arbol.body
+                if isinstance(n, ast.ClassDef)
+                and any(getattr(b, "id", "") == "BaseModel" for b in n.bases)}
+    tarde = []
+    for f in arbol.body:
+        if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for a in f.args.args + f.args.kwonlyargs:
+            nombre = getattr(a.annotation, "id", None)
+            if nombre in linea_de and linea_de[nombre] > f.lineno:
+                tarde.append(f"{f.name}() usa {nombre}, declarado en la linea {linea_de[nombre]}")
+    assert not tarde, tarde
