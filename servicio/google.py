@@ -30,8 +30,20 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-CLIENTE_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
-CLIENTE_SECRETO = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+#: UN CLIENTE OAUTH POR CUENTA, y no uno compartido. Medido el 2026-09-27: los dos dominios usan
+#: Google Workspace (`zenvrax.com` y `gutlyn.com`), o sea son organizaciones distintas salvo que uno
+#: sea dominio secundario del otro. Una aplicacion "interna" solo vale dentro de SU organizacion, y
+#: una "externa" en modo prueba caduca el permiso cada 7 dias con los permisos de Gmail, que son
+#: restringidos. Con un cliente por cuenta, cada una puede ser interna en su organizacion: sin
+#: verificacion de Google y sin reautorizar cada semana.
+#: Si las dos cuentas resultan estar en la MISMA organizacion, se pone el mismo par en las dos y ya.
+def _cliente(negocio: str) -> tuple[str, str]:
+    """El (id, secreto) del cliente OAuth de esa cuenta, con respaldo al comun."""
+    suf = negocio.upper()
+    ident = os.environ.get(f"GOOGLE_CLIENT_ID_{suf}") or os.environ.get("GOOGLE_CLIENT_ID", "")
+    secreto = (os.environ.get(f"GOOGLE_CLIENT_SECRET_{suf}")
+               or os.environ.get("GOOGLE_CLIENT_SECRET", ""))
+    return ident, secreto
 #: Con que clave se cifran los permisos en disco. Sin ella, Zeno no guarda nada.
 CLAVE_COFRE = os.environ.get("ZENO_COFRE_KEY", "")
 COFRE = pathlib.Path(os.environ.get("ZENO_COFRE", "/datos/google.cofre"))
@@ -132,10 +144,11 @@ def enlace_para_autorizar(negocio: str) -> str:
     """La direccion a la que el operador va para dar permiso a UNA de sus cuentas."""
     if negocio not in CUENTAS:
         raise NoAutorizado(f"no conozco el negocio {negocio!r}")
-    if not CLIENTE_ID:
-        raise SinConfigurar("falta GOOGLE_CLIENT_ID")
+    ident, _ = _cliente(negocio)
+    if not ident:
+        raise SinConfigurar(f"falta el cliente OAuth de {negocio}: GOOGLE_CLIENT_ID_{negocio.upper()}")
     parametros = {
-        "client_id": CLIENTE_ID,
+        "client_id": ident,
         "redirect_uri": VUELTA,
         "response_type": "code",
         "scope": " ".join(permisos()),
@@ -160,7 +173,8 @@ def guarda_permiso(negocio: str, codigo: str) -> dict:
     """Cambia el codigo que devuelve Google por un permiso duradero y lo guarda."""
     if negocio not in CUENTAS:
         raise NoAutorizado(f"no conozco el negocio {negocio!r}")
-    t = _pide_token({"code": codigo, "client_id": CLIENTE_ID, "client_secret": CLIENTE_SECRETO,
+    ident, secreto = _cliente(negocio)
+    t = _pide_token({"code": codigo, "client_id": ident, "client_secret": secreto,
                      "redirect_uri": VUELTA, "grant_type": "authorization_code"})
     if not t.get("refresh_token"):
         # Sin refresco, el permiso dura una hora. Es un fallo de configuracion (falta `consent`) y
@@ -199,8 +213,9 @@ def _acceso(negocio: str) -> str:
     if d.get("acceso") and time.time() < d.get("caduca", 0):
         return d["acceso"]
     try:
-        t = _pide_token({"refresh_token": d["refresh"], "client_id": CLIENTE_ID,
-                         "client_secret": CLIENTE_SECRETO, "grant_type": "refresh_token"})
+        ident, secreto = _cliente(negocio)
+        t = _pide_token({"refresh_token": d["refresh"], "client_id": ident,
+                         "client_secret": secreto, "grant_type": "refresh_token"})
     except urllib.error.HTTPError as e:
         # 400 aqui casi siempre significa que el operador revoco el permiso desde su cuenta de
         # Google. Se borra el del cofre: dejarlo haria que Zeno reintentara para siempre.

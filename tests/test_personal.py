@@ -167,3 +167,40 @@ def test_conectadas_nunca_devuelve_los_tokens(monkeypatch, tmp_path):
     fuera = google.conectadas()["zenvrax"]
     assert "SECRETO" not in str(fuera) and "TAMBIEN" not in str(fuera)
     assert fuera["cuenta"] == "z@z.com"
+
+
+def test_cada_cuenta_puede_tener_su_propio_cliente_oauth(monkeypatch):
+    """MEDIDO EL 2026-09-27: los dos dominios usan Google Workspace y son dominios distintos.
+
+    Una aplicación "interna" solo vale dentro de su organización, y una "externa" en modo prueba
+    caduca el permiso **cada 7 días** con los permisos de Gmail, que Google considera restringidos.
+    Con un cliente por cuenta, cada una puede ser interna en la suya: sin verificación y sin
+    reautorizar cada semana.
+
+    Si al final las dos están en la misma organización, basta con poner el mismo par en las dos.
+    """
+    monkeypatch.setenv("GOOGLE_CLIENT_ID_ZENVRAX", "id-z")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET_ZENVRAX", "sec-z")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID_GUTLYN", "id-g")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET_GUTLYN", "sec-g")
+    assert google._cliente("zenvrax") == ("id-z", "sec-z")
+    assert google._cliente("gutlyn") == ("id-g", "sec-g")
+
+
+def test_si_solo_hay_un_cliente_comun_sirve_para_las_dos(monkeypatch):
+    """El caso en que las dos cuentas están en la misma organización de Workspace."""
+    for v in ("GOOGLE_CLIENT_ID_ZENVRAX", "GOOGLE_CLIENT_ID_GUTLYN",
+              "GOOGLE_CLIENT_SECRET_ZENVRAX", "GOOGLE_CLIENT_SECRET_GUTLYN"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "uno")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "otro")
+    assert google._cliente("zenvrax") == ("uno", "otro") == google._cliente("gutlyn")
+
+
+def test_sin_cliente_configurado_se_dice_cual_falta(monkeypatch):
+    """Un mensaje genérico obligaría a adivinar cuál de las dos cuentas está sin configurar."""
+    for v in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID_GUTLYN"):
+        monkeypatch.delenv(v, raising=False)
+    with pytest.raises(google.SinConfigurar) as e:
+        google.enlace_para_autorizar("gutlyn")
+    assert "GUTLYN" in str(e.value)
