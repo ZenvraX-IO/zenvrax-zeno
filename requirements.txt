@@ -1,2 +1,7 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
+# Avisos al movil (Web Push). Trae py-vapid y cryptography, que son quienes firman y cifran:
+# el navegador solo acepta el aviso si viene firmado con la clave VAPID que el se guardo al
+# suscribirse, y el cuerpo va cifrado de punta a punta, asi que el servicio de Google o Apple que
+# lo transporta no puede leerlo.
+pywebpush==2.0.0

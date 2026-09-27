@@ -49,6 +49,14 @@ services:
       # Con que se cifra el permiso en disco. Sin esta clave, Zeno no guarda nada y lo dice.
       ZENO_COFRE_KEY: ${ZENO_COFRE_KEY}
       ZENO_COFRE: /datos/google.cofre
+      # AVISOS AL MOVIL (Web Push). La llave privada firma cada aviso y vive solo aqui; la publica
+      # la ve el navegador al suscribirse, que es como esta pensado. Sin ellas, la aplicacion enseña
+      # "faltan las claves" en vez de un boton que no puede funcionar.
+      ZENO_VAPID_PUBLICA: ${ZENO_VAPID_PUBLICA:-}
+      ZENO_VAPID_PRIVADA: ${ZENO_VAPID_PRIVADA:-}
+      ZENO_VAPID_CONTACTO: ${ZENO_VAPID_CONTACTO:-mailto:hola@zenvrax.com}
+      ZENO_AVISOS: /datos/avisos.json
+      ZENO_TOPE_AVISOS: ${ZENO_TOPE_AVISOS:-5}
       # La clave propia de Zeno, como hash. Entrar pedia la contraseña del cockpit MAS el codigo de
       # seis cifras, varias veces al dia desde el movil: una puerta que cuesta cruzar se deja de
       # cruzar. La del cockpit sigue funcionando; esta se suma. Vacio = solo la del cockpit.

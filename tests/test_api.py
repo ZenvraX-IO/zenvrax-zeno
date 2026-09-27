@@ -71,6 +71,9 @@ def test_no_hay_ningun_endpoint_que_ejecute_una_accion():
         "google_conectar",   # devuelve la dirección de Google; no toca ni una cola
         "google_olvidar",    # retira un permiso de Google; solo quita, nunca ejecuta
         "agenda_confirmar",  # crea la cita; el UNICO endpoint que escribe fuera, y pide un vale
+        "avisos_probar",     # manda UN aviso al movil del propio operador
+        "avisos_quitar",     # borra una suscripcion
+        "avisos_suscribir",  # guarda una suscripcion del navegador
         "agenda_proponer",   # la prepara y devuelve el vale; no toca Google
         "entrar_con_clave",  # cambia la clave propia por un token; no toca ninguna cola
         "login", "login_2fa", "salir",
@@ -548,3 +551,31 @@ def test_una_fuente_caida_no_vacia_la_pantalla(monkeypatch):
     d = cliente.get("/api/hoy", headers=CABECERA).json()
     assert d["avisos"], "lo que si se pudo leer sigue saliendo"
     assert any("502" in f for f in d["fallos"])
+
+
+def test_ningun_nombre_local_tapa_un_modulo_importado():
+    """PASO DE VERDAD al añadir los avisos: una variable local llamada `avisos` tapaba al modulo
+    `avisos` dentro de la pantalla de hoy. No rompia nada porque alli no se usaba el modulo, pero es
+    la clase de trampa que revienta en el siguiente cambio y cuesta media hora encontrar.
+
+    Se comprueba el fichero entero: cualquier funcion que reutilice el nombre de un import salta.
+    """
+    arbol = ast.parse((RAIZ / "servicio" / "api.py").read_text(encoding="utf-8"))
+    importados = set()
+    for n in ast.walk(arbol):
+        if isinstance(n, ast.ImportFrom):
+            importados |= {(a.asname or a.name).split(".")[0] for a in n.names}
+        elif isinstance(n, ast.Import):
+            importados |= {(a.asname or a.name).split(".")[0] for a in n.names}
+
+    culpables = []
+    for f in ast.walk(arbol):
+        if not isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        locales = {a.arg for a in f.args.args}
+        for n in ast.walk(f):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                locales.add(n.id)
+        for tapado in locales & importados:
+            culpables.append(f"{f.name}() tapa el modulo {tapado}")
+    assert not culpables, culpables

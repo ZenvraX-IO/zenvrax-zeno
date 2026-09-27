@@ -134,6 +134,11 @@
             margin:20px 0 10px;display:flex;align-items:center;gap:10px}
   /* La cuenta conectada es un pie discreto: importa el primer dia y despues estorba. */
   .pie-cuentas{margin:26px 0 4px;color:#6f6f78;font-size:11.5px;text-align:center}
+  .avisos{background:var(--carbon);border:1px solid var(--linea);border-radius:12px;
+          padding:12px 13px;margin:18px 0 4px;display:flex;gap:11px;align-items:center}
+  .avisos .c{flex:1;min-width:0}
+  .avisos .c b{display:block;font-size:13.5px;font-weight:600}
+  .avisos .c span{color:var(--gris);font-size:11.5px;line-height:1.35;display:block}
   .quitar-cuenta{background:none;border:0;color:#6f6f78;font-size:11.5px;text-decoration:underline;
                  padding:6px;cursor:pointer}
   /* El filtro por negocio: el operador pregunto "cuales vienen de GutLyn y cuales de la
@@ -600,9 +605,86 @@ async function cargaHoy() {
     if (!plan.foco && !urg.length && !(d.fallos || []).length)
       h += '<div class="vacio">Nada urgente hoy.<br>Lo que espera tu OK está en Pendiente.</div>';
 
-    c.innerHTML = h;
+    c.innerHTML = h + '<div id="caja-avisos"></div>';
+    pintaAvisos();
   } catch (e) {
     c.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  }
+}
+
+// ---------------------------------------------------------------- que Zeno avise al movil
+//
+// Web Push: llega con la aplicacion cerrada. En iOS hace falta tenerla INSTALADA en la pantalla de
+// inicio; una pestaña de Safari no recibe avisos y el navegador ni siquiera ofrece el permiso, asi
+// que eso se dice en vez de enseñar un boton que no puede funcionar.
+
+function base64AArray(b64) {
+  const relleno = "=".repeat((4 - (b64.length % 4)) % 4);
+  const limpio = (b64 + relleno).replace(/-/g, "+").replace(/_/g, "/");
+  const crudo = atob(limpio);
+  return Uint8Array.from([...crudo].map(c => c.charCodeAt(0)));
+}
+
+async function pintaAvisos() {
+  const caja = $("#caja-avisos");
+  if (!caja) return;
+  let e;
+  try { e = await api("/api/avisos"); } catch { return; }
+
+  const puede = "serviceWorker" in navigator && "PushManager" in window;
+  const instalada = window.matchMedia("(display-mode: standalone)").matches ||
+                    window.navigator.standalone === true;
+  const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  let texto, boton = "";
+  if (!e.posible) {
+    texto = "faltan las claves en el servidor";
+  } else if (!puede) {
+    texto = esIOS && !instalada
+      ? "añade Zeno a la pantalla de inicio y vuelve aquí"
+      : "este navegador no puede recibirlos";
+  } else if (Notification.permission === "denied") {
+    texto = "los has bloqueado en los ajustes del navegador";
+  } else if (e.suscritos > 0) {
+    texto = "activos en " + e.suscritos + (e.suscritos === 1 ? " sitio" : " sitios");
+    boton = '<button class="b sin" id="avisos-probar">Probar</button>';
+  } else {
+    texto = "solo lo urgente y lo que empeora, cinco al día como mucho";
+    boton = '<button class="b primaria" id="avisos-on">Activar</button>';
+  }
+
+  caja.innerHTML = '<div class="avisos"><div class="c"><b>Avisos al móvil</b><span>' +
+                   esc(texto) + "</span></div>" + boton + "</div>";
+  const on = $("#avisos-on");
+  if (on) on.onclick = () => activaAvisos(on, e.llave);
+  const probar = $("#avisos-probar");
+  if (probar) probar.onclick = async () => {
+    probar.disabled = true; probar.textContent = "mandando…";
+    try {
+      const r = await api("/api/avisos/probar", { method: "POST" });
+      probar.textContent = r.enviados ? "enviado" : "no ha salido";
+    } catch (err) { probar.textContent = "falló"; }
+  };
+}
+
+async function activaAvisos(boton, llave) {
+  boton.disabled = true; boton.textContent = "…";
+  try {
+    const permiso = await Notification.requestPermission();
+    if (permiso !== "granted") { pintaAvisos(); return; }
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    // `userVisibleOnly` es obligatorio: el navegador no deja suscribirse para hacer cosas en
+    // silencio, cada envio tiene que acabar en una notificacion que la persona ve.
+    const sus = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: base64AArray(llave),
+    });
+    await api("/api/avisos/suscribir", { method: "POST", body: JSON.stringify(sus.toJSON()) });
+    pintaAvisos();
+  } catch (e) {
+    boton.disabled = false; boton.textContent = "Activar";
+    alert("No se han podido activar: " + e.message);
   }
 }
 

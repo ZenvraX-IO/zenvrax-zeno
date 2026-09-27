@@ -34,8 +34,8 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 import lector                                    # noqa: E402
-from servicio import (chat as chat_mod, citas, clave as clave_mod, google,  # noqa: E402
-                      personal, sesion)
+from servicio import (avisos, chat as chat_mod, citas, clave as clave_mod,  # noqa: E402
+                      empuje, google, personal, ronda, sesion)
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -168,7 +168,7 @@ async def pendientes(authorization: str = Header(default="")):
 
 # ---------------------------------------------------------------- lo primero de la mañana
 
-def _contexto_de_hoy(plan, avisos, negocios, personales):
+def _contexto_de_hoy(plan, lo_torcido, negocios, personales):
     """Todo lo que Zeno sabe hoy, en texto, para que las tres lineas se escriban con criterio.
 
     La PANTALLA enseña poco (el foco y lo urgente, que es lo que se pidio), pero el resumen se
@@ -184,9 +184,12 @@ def _contexto_de_hoy(plan, avisos, negocios, personales):
     if plan.get("resto"):
         t.append("TAMBIEN EN EL PLAN:" + salto
                  + salto.join("  - " + u["titulo"] for u in plan["resto"]))
-    if avisos:
+    # `lo_torcido` y no `avisos`: `avisos` es el modulo que manda las notificaciones, y usar el
+    # mismo nombre para una lista local lo tapaba dentro de esta funcion. Hoy no rompia nada porque
+    # aqui no se usa el modulo, pero es una trampa puesta para el proximo que edite.
+    if lo_torcido:
         t.append("SE HA SALIDO DE SITIO:" + salto + salto.join(
-            f"  - [{a['negocio']}] {a['texto']}" for a in avisos))
+            f"  - [{a['negocio']}] {a['texto']}" for a in lo_torcido))
     for n in negocios:
         cifras = ", ".join(f"{k['k']} {k['v']}" for k in (n.get("kpis") or []))
         t.append(f"{n['nombre']}: {cifras or 'sin cifras'}. Espera tu OK: {n.get('pendiente', 0)}")
@@ -205,7 +208,7 @@ async def api_hoy(narrar: bool = Query(default=True), authorization: str = Heade
     """
     _quien(authorization)
     plan, f1 = lector.plan_del_dia()
-    avisos, f2 = lector.alertas()
+    lo_torcido, f2 = lector.alertas()
     negocios, f3 = lector.negocios()
     fallos = f1 + f2 + f3
 
@@ -225,16 +228,65 @@ async def api_hoy(narrar: bool = Query(default=True), authorization: str = Heade
     except Exception as e:                                # noqa: BLE001
         fallos.append(f"tu agenda: {type(e).__name__}")
 
-    fuera = {"plan": plan, "avisos": avisos, "fallos": fallos, "resumen": None}
+    fuera = {"plan": plan, "avisos": lo_torcido, "fallos": fallos, "resumen": None}
     if narrar and CHAT_ACTIVO:
         try:
             fuera["resumen"] = chat_mod.resumen_de_la_manana(
-                _contexto_de_hoy(plan, avisos, negocios, personales))
+                _contexto_de_hoy(plan, lo_torcido, negocios, personales))
         except (chat_mod.TopeAlcanzado, chat_mod.SinClaveDeIA) as e:
             fuera["fallos"].append(str(e))
         except Exception as e:                            # noqa: BLE001
             fuera["fallos"].append(f"el resumen escrito: {type(e).__name__}")
     return fuera
+
+
+# ---------------------------------------------------------------- los avisos al movil
+
+class Suscripcion(BaseModel):
+    endpoint: str
+    keys: dict
+
+
+@app.get("/api/avisos")
+async def avisos_estado(authorization: str = Header(default="")):
+    """Si se pueden mandar avisos y a cuantos sitios. La clave publica la necesita el navegador."""
+    _quien(authorization)
+    return {"posible": empuje.configurado(), "llave": empuje.VAPID_PUBLICA,
+            "suscritos": avisos.suscritos()}
+
+
+@app.post("/api/avisos/suscribir")
+async def avisos_suscribir(body: Suscripcion, authorization: str = Header(default="")):
+    """Apunta este navegador. La suscripcion la crea el propio navegador, aqui solo se guarda."""
+    _quien(authorization)
+    try:
+        return {"suscritos": avisos.apunta(body.model_dump())}
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@app.post("/api/avisos/quitar")
+async def avisos_quitar(body: Suscripcion, authorization: str = Header(default="")):
+    _quien(authorization)
+    return {"habia": avisos.olvida(body.endpoint)}
+
+
+@app.post("/api/avisos/probar")
+async def avisos_probar(authorization: str = Header(default="")):
+    """Manda UN aviso de prueba ahora. Es la unica forma de saber que el movil lo recibe de verdad:
+    un permiso concedido en el navegador no garantiza que el aviso llegue a la pantalla."""
+    _quien(authorization)
+    try:
+        return empuje.manda({"titulo": "Zeno", "cuerpo": "Los avisos funcionan.", "url": "/"})
+    except empuje.SinLlaves as e:
+        raise HTTPException(503, str(e)) from e
+
+
+@app.get("/api/avisos/ensayo")
+async def avisos_ensayo(authorization: str = Header(default="")):
+    """Que avisaria la ronda ahora mismo, SIN mandar nada ni marcar nada como sonado."""
+    _quien(authorization)
+    return ronda.corre(seco=True)
 
 
 # ---------------------------------------------------------------- los dos negocios
