@@ -72,7 +72,10 @@ def test_la_lista_de_endpoints_que_escriben_es_cerrada():
     permitidos = [
         "accion_confirmar",  # EL UNICO que ejecuta algo de las colas. Vale, contrato y PIN
         "accion_proponer",   # lo prepara; no llama a nadie
+        "agenda_cambio_confirmar",  # mueve o cancela; PIN si hay invitados
+        "agenda_cancelar",   # prepara la cancelacion; no toca Google
         "agenda_confirmar",  # crea la cita; pide un vale
+        "agenda_mover",      # prepara el cambio de hora; no toca Google
         "agenda_proponer",   # la prepara; no toca Google
         "avisos_probar",     # manda UN aviso al movil del propio operador
         "avisos_quitar",     # borra una suscripcion

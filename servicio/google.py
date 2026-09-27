@@ -308,7 +308,7 @@ def pide(negocio: str, url: str) -> dict:
         return json.loads(r.read() or "{}")
 
 
-def escribe(negocio: str, url: str, cuerpo: dict, metodo: str = "POST") -> dict:
+def escribe(negocio: str, url: str, cuerpo: dict | None, metodo: str = "POST") -> dict:
     """LA UNICA puerta por la que Zeno escribe en Google. Usarla es un acto deliberado.
 
     Esta aparte de `pide` para que se vea de un vistazo quien escribe: hoy solo `citas.py`, y solo
@@ -318,11 +318,14 @@ def escribe(negocio: str, url: str, cuerpo: dict, metodo: str = "POST") -> dict:
     Si falta el permiso, Google responde 403 y se traduce a algo que se entiende, en vez de dejar un
     error crudo: la causa casi siempre es que el tramo de escritura no se ha abierto todavia.
     """
-    datos = json.dumps(cuerpo).encode()
-    req = urllib.request.Request(
-        url, data=datos, method=metodo,
-        headers={"Authorization": "Bearer " + _acceso(negocio),
-                 "Content-Type": "application/json"})
+    # `cuerpo=None` para los DELETE: mandar un cuerpo vacio en un borrado no es lo mismo que no
+    # mandar ninguno, y Google contesta 400 a lo primero.
+    cabeceras = {"Authorization": "Bearer " + _acceso(negocio)}
+    datos = None
+    if cuerpo is not None:
+        datos = json.dumps(cuerpo).encode()
+        cabeceras["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=datos, method=metodo, headers=cabeceras)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.loads(r.read() or "{}")

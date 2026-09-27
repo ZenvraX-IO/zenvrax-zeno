@@ -209,7 +209,13 @@ def test_escribir_en_google_solo_pasa_por_confirmar():
             if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                     and n.func.attr == "escribe"):
                 dentro_de.append(f.name)
-    assert dentro_de == ["confirma"], f"se escribe desde {dentro_de}, no solo desde confirma"
+    # Solo las funciones que CONFIRMAN. Lo que importa no es el nombre exacto sino la forma: una
+    # funcion `propone*` nunca puede escribir, porque entonces la cita existiria antes de que el
+    # operador la mirara y los dos tiempos no servirian de nada.
+    assert dentro_de, "nadie escribe en Google: falta la pieza que confirma"
+    for donde in dentro_de:
+        assert donde.startswith("confirma"), f"se escribe desde {donde}, que no confirma nada"
+    assert not [x for x in dentro_de if x.startswith("propone")]
 
 
 def test_personal_sigue_sin_poder_escribir():

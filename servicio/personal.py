@@ -133,6 +133,9 @@ def agenda(negocio: str, dias: int = DIAS_DE_AGENDA, buzon: str = "") -> list[di
             enlace += ("&" if "?" in enlace else "?") + "authuser=" + urllib.parse.quote(buzon)
         fuera.append({
             "negocio": negocio,
+            # El id viaja para poder mover o cancelar desde la propia lista. Sin el habia que
+            # abrir Google para cualquier cambio, que es la mitad del trabajo de una agenda.
+            "id": e.get("id") or "",
             "titulo": e.get("summary") or "(sin titulo)",
             # Un evento de dia entero trae `date` y no `dateTime`: leer solo dateTime dejaba fuera
             # justo los que ocupan el dia completo.

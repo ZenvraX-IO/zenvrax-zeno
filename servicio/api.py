@@ -640,6 +640,50 @@ async def agenda_confirmar(body: Vale, authorization: str = Header(default="")):
         raise HTTPException(503, str(e)) from e
 
 
+class Cambio(BaseModel):
+    id: str
+    desde: str = ""
+    minutos: int | None = None
+
+
+class ValeDeCita(BaseModel):
+    vale: str
+
+
+@app.post("/api/agenda/mover")
+async def agenda_mover(body: Cambio, authorization: str = Header(default="")):
+    """Prepara mover una cita. NO la mueve."""
+    _quien(authorization)
+    try:
+        return citas.propone_cambio(_cual_buzon(), body.id, body.desde, body.minutos)
+    except citas.NoSePuede as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@app.post("/api/agenda/cancelar")
+async def agenda_cancelar(body: Cambio, authorization: str = Header(default="")):
+    """Prepara cancelar una cita. NO la cancela."""
+    _quien(authorization)
+    try:
+        return citas.propone_baja(_cual_buzon(), body.id)
+    except citas.NoSePuede as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@app.post("/api/agenda/cambio/confirmar")
+async def agenda_cambio_confirmar(body: ValeDeCita, authorization: str = Header(default="")):
+    """Mueve o cancela de verdad. Con invitados hace falta el PIN: les llega un correo."""
+    _, token = _quien(authorization)
+    try:
+        return citas.confirma_cambio(body.vale, clave_mod.pin_abierto(_huella(token)))
+    except citas.NoSePuede as e:
+        # 428 cuando lo que falta es el PIN, igual que al ejecutar una accion: con 401 el front
+        # borraria el token y echaria al operador fuera en mitad de una cancelacion.
+        raise HTTPException(428 if "PIN" in str(e) else 409, str(e)) from e
+    except google.NoAutorizado as e:
+        raise HTTPException(503, str(e)) from e
+
+
 @app.get("/api/personal")
 async def api_personal(authorization: str = Header(default="")):
     """El correo sin leer y las citas próximas de las dos cuentas.

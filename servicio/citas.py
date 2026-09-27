@@ -277,7 +277,10 @@ def _choca_aqui(negocio: str, cuando: datetime, minutos: int) -> list[dict]:
 def confirma(vale: str) -> dict:
     """LO UNICO que escribe en Google. Sin un vale vivo no hace nada."""
     d = _PROPUESTAS.pop(vale, None)
-    if not d or time.time() - d["nacida"] > _VIVE:
+    # `que` marca las propuestas de mover y cancelar, que comparten este mismo almacen. Sin esta
+    # comprobacion, un vale de cancelar metido aqui crearia una cita a medias en vez de fallar, y
+    # el operador veria "creada" sin que se hubiera cancelado nada.
+    if not d or time.time() - d["nacida"] > _VIVE or "que" in d:
         raise NoSePuede("esa propuesta ha caducado: vuelve a pedirla")
     cuerpo = {
         "summary": d["titulo"],
@@ -296,3 +299,90 @@ def confirma(vale: str) -> dict:
     return {"creada": True, "titulo": d["titulo"], "cuando": _en_palabras(d["desde"], 0),
             "abrir": creada.get("htmlLink", ""), "id": creada.get("id", ""),
             "avisados": d["con"]}
+
+
+# ---------------------------------------------------------------- mover y cancelar
+
+def _mira(negocio: str, ident: str) -> dict:
+    """La cita tal cual esta en Google. Se lee ANTES de proponer nada."""
+    try:
+        return google.pide(negocio, f"{CALENDARIO}/{urllib.parse.quote(ident)}")
+    except Exception as e:                                # noqa: BLE001
+        raise NoSePuede(f"no encuentro esa cita ({type(e).__name__})") from e
+
+
+def _quien_va(evento: dict) -> list[str]:
+    """Los invitados que NO son uno mismo. Son los que reciben el correo si algo cambia."""
+    return [a.get("email") for a in (evento.get("attendees") or [])
+            if a.get("email") and not a.get("self")]
+
+
+def propone_cambio(negocio: str, ident: str, nuevo_desde: str,
+                   minutos: int | None = None) -> dict:
+    """Preparar mover una cita. NO la mueve."""
+    e = _mira(negocio, ident)
+    try:
+        cuando = datetime.fromisoformat(nuevo_desde)
+    except ValueError:
+        raise NoSePuede(f"no entiendo la fecha {nuevo_desde!r}") from None
+    if cuando.tzinfo is None:
+        cuando = cuando.replace(tzinfo=ZONA)
+    if cuando < _ahora():
+        raise NoSePuede("esa hora ya ha pasado")
+
+    a = _lee((e.get("start") or {}).get("dateTime", ""))
+    b = _lee((e.get("end") or {}).get("dateTime", ""))
+    if not a or not b:
+        # Un evento de dia entero no tiene hora que mover, y tratarlo como si la tuviera lo
+        # convertiria en una cita de media hora sin que nadie lo pidiera.
+        raise NoSePuede("esa cita ocupa el dia entero: muevela desde Google")
+    dura = minutos if minutos else int((b - a).total_seconds() // 60)
+    invitados = _quien_va(e)
+
+    vale = secrets.token_urlsafe(18)
+    _PROPUESTAS[vale] = {"nacida": time.time(), "que": "mover", "negocio": negocio, "id": ident,
+                         "titulo": e.get("summary") or "(sin titulo)", "desde": cuando,
+                         "hasta": cuando + timedelta(minutes=dura), "con": invitados}
+    return {"vale": vale, "que": "mover", "titulo": e.get("summary") or "(sin titulo)",
+            "antes": _en_palabras(a, int((b - a).total_seconds() // 60)),
+            "cuando": _en_palabras(cuando, dura), "con": invitados,
+            # Mover una cita con invitados les manda un correo. Es lo que no se deshace.
+            "avisa_a_invitados": bool(invitados)}
+
+
+def propone_baja(negocio: str, ident: str) -> dict:
+    """Preparar cancelar una cita. NO la cancela."""
+    e = _mira(negocio, ident)
+    a = _lee((e.get("start") or {}).get("dateTime", ""))
+    invitados = _quien_va(e)
+    vale = secrets.token_urlsafe(18)
+    _PROPUESTAS[vale] = {"nacida": time.time(), "que": "cancelar", "negocio": negocio,
+                         "id": ident, "titulo": e.get("summary") or "(sin titulo)",
+                         "con": invitados}
+    return {"vale": vale, "que": "cancelar", "titulo": e.get("summary") or "(sin titulo)",
+            "cuando": _en_palabras(a, 0) if a else "todo el dia",
+            "con": invitados, "avisa_a_invitados": bool(invitados),
+            # Cancelar no se deshace desde Zeno: no hay papelera en el calendario.
+            "sin_vuelta": True}
+
+
+def confirma_cambio(vale: str, pin_abierto: bool = True) -> dict:
+    """Mueve o cancela de verdad. Con invitados hace falta el PIN, por el mismo motivo que publicar:
+    les llega un correo que no se puede recoger."""
+    d = _PROPUESTAS.pop(vale, None)
+    if not d or time.time() - d["nacida"] > _VIVE or "que" not in d:
+        raise NoSePuede("esa propuesta ha caducado: vuelve a pedirla")
+    if d["con"] and not pin_abierto:
+        _PROPUESTAS[vale] = d              # se devuelve: que falte el PIN no tira la propuesta
+        raise NoSePuede("esa cita tiene invitados y les va a llegar un correo: hace falta el PIN")
+
+    avisa = "all" if d["con"] else "none"
+    url = f"{CALENDARIO}/{urllib.parse.quote(d['id'])}?sendUpdates={avisa}"
+    if d["que"] == "cancelar":
+        google.escribe(d["negocio"], url, None, metodo="DELETE")
+        return {"hecho": True, "que": "cancelar", "titulo": d["titulo"], "avisados": d["con"]}
+    google.escribe(d["negocio"], url, {"start": {"dateTime": d["desde"].isoformat()},
+                                       "end": {"dateTime": d["hasta"].isoformat()}},
+                   metodo="PATCH")
+    return {"hecho": True, "que": "mover", "titulo": d["titulo"],
+            "cuando": _en_palabras(d["desde"], 0), "avisados": d["con"]}

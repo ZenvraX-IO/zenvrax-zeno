@@ -168,6 +168,9 @@
   .cita .d{flex:1;min-width:0}
   .cita .d b{display:block;font-size:14.5px;font-weight:600;line-height:1.3}
   .cita .d span{color:var(--gris);font-size:11.5px}
+  .acciones-cita{display:flex;gap:14px;margin-top:7px}
+  .acciones-cita button{background:none;border:0;color:var(--gris);font-size:12px;padding:4px 0;
+                        text-decoration:underline;cursor:pointer}
   /* PROPONER UNA CITA. Dos tiempos a proposito: primero se ve lo que se va a crear, y solo despues
      se crea. Por eso la caja de confirmar es visualmente distinta del formulario. */
   .nueva{background:var(--carbon);border:1px solid var(--linea);border-radius:12px;
@@ -955,11 +958,20 @@ async function cargaPersonal() {
   html += '<div class="apartado">Agenda</div><div id="agenda-extra"></div>';
   html += '<div class="apartado">Próximas citas · 14 días</div>';
   if (!agenda.length) html += '<div class="vacio">nada en las próximas dos semanas</div>';
-  for (const a of agenda)
-    html += '<a class="cita" href="' + esc(a.abrir) + '" target="_blank" rel="noopener">' +
-            '<span class="h">' + esc(horaCorta(a.cuando, a.todo_el_dia)) + "</span>" +
-            '<span class="d"><b>' + esc(a.titulo) + "</b><span>" + esc(a.negocio) +
-            (a.con && a.con.length ? " · " + a.con.length + " personas" : "") + "</span></span></a>";
+  for (const a of agenda) {
+    html += '<div class="cita"><span class="h">' + esc(horaCorta(a.cuando, a.todo_el_dia)) +
+            '</span><span class="d"><a href="' + esc(a.abrir) + '" target="_blank" rel="noopener" ' +
+            'style="text-decoration:none;color:inherit"><b>' + esc(a.titulo) + "</b></a><span>" +
+            esc(a.negocio) + (a.con && a.con.length ? " · " + a.con.length + " personas" : "") +
+            "</span>";
+    // Mover y cancelar, pequeños y en texto: lo grande es abrir la cita, que es lo que se hace
+    // noventa veces de cada cien.
+    if (a.id && !a.todo_el_dia)
+      html += '<span class="acciones-cita">' +
+              '<button data-mover="' + esc(a.id) + '">mover</button>' +
+              '<button data-anular="' + esc(a.id) + '">cancelar</button></span>';
+    html += "</span></div>";
+  }
 
   correosEnPantalla = datos.correos || [];
   html += '<div class="apartado">Sin leer · ' + correosEnPantalla.length + "</div>";
@@ -969,6 +981,76 @@ async function cargaPersonal() {
   enchufaBotonesDeCuenta(c);
   pintaCorreos();
   pintaAgendaExtra();
+}
+
+// ---------------------------------------------------------------- mover y cancelar una cita
+//
+// Mismos dos tiempos que crear. Y con invitados pide el PIN, por lo mismo que publicar: cancelar
+// les manda un correo diciendo que la reunion se ha anulado, y ese correo no se recoge.
+
+async function cambiaCita(que, id) {
+  const caja = $("#cita-propuesta");
+  let cuerpo = { id };
+  if (que === "mover") {
+    const cuando = prompt("Nueva fecha y hora (por ejemplo 2026-10-09 11:00)");
+    if (!cuando) return;
+    // Se manda tal cual y lo entiende el servidor: aqui una fecha mal formada solo tiene que
+    // producir un mensaje claro, no una cita movida a un sitio raro.
+    cuerpo.desde = cuando.trim().replace(" ", "T");
+  }
+  try {
+    const p = await api("/api/agenda/" + (que === "mover" ? "mover" : "cancelar"),
+                        { method: "POST", body: JSON.stringify(cuerpo) });
+    propuestaViva = p;
+    let h = '<div class="propuesta"><div class="q">' +
+            (que === "mover" ? "Mover: " : "Cancelar: ") + esc(p.titulo) + "</div>";
+    if (p.antes) h += '<div class="c">de ' + esc(p.antes) + " a " + esc(p.cuando) + "</div>";
+    else h += '<div class="c">' + esc(p.cuando || "") + "</div>";
+    if (p.avisa_a_invitados)
+      h += '<div class="ojo"><b>Se avisará por correo a ' + esc((p.con || []).join(", ")) +
+           "</b>. Eso no se puede deshacer.</div>";
+    h += '<div class="btns"><button class="b primaria" id="cita-cambiar">' +
+         (que === "mover" ? "Mover" : "Cancelar la cita") +
+         '</button><button class="b sin" id="cita-nada">Dejarlo</button></div></div>';
+    caja.innerHTML = h;
+    caja.scrollIntoView({ block: "center" });
+    $("#cita-nada").onclick = () => { propuestaViva = null; caja.innerHTML = ""; };
+    $("#cita-cambiar").onclick = () => aplicaCambio();
+  } catch (e) {
+    caja.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  }
+}
+
+async function aplicaCambio() {
+  if (!propuestaViva) return;
+  const b = $("#cita-cambiar");
+  const antes = b.textContent;
+  b.disabled = true; b.textContent = "…";
+  try {
+    const r = await fetch("/api/agenda/cambio/confirmar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ vale: propuestaViva.vale }) });
+    if (r.status === 428) {
+      b.disabled = false; b.textContent = antes;
+      const pin = prompt("PIN: esta cita tiene invitados y les va a llegar un correo");
+      if (!pin) return;
+      try { await api("/api/pin", { method: "POST", body: JSON.stringify({ pin }) }); }
+      catch (e) { alert(e.message); return; }
+      return aplicaCambio();
+    }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || ("error " + r.status));
+    propuestaViva = null;
+    $("#cita-propuesta").innerHTML = '<div class="propuesta"><div class="q">' +
+      (d.que === "cancelar" ? "Cancelada: " : "Movida: ") + esc(d.titulo) + "</div>" +
+      (d.cuando ? '<div class="c">' + esc(d.cuando) + "</div>" : "") + "</div>";
+    cargaPersonal();
+  } catch (e) {
+    b.disabled = false; b.textContent = antes;
+    $("#cita-propuesta").insertAdjacentHTML("beforeend",
+      '<div class="aviso-fallo">' + esc(e.message) + "</div>");
+  }
 }
 
 // ---------------------------------------------------------------- proponer una cita
@@ -1119,6 +1201,12 @@ function pintaCorreos() {
 }
 
 function enchufaBotonesDeCuenta(c) {
+  // Aqui tambien van los de la agenda: es el unico sitio por el que pasan las dos veces que se
+  // pinta la pantalla, y engancharlos en uno solo dejaba los botones muertos tras recargar.
+  c.querySelectorAll("[data-mover]").forEach(b =>
+    b.onclick = () => cambiaCita("mover", b.dataset.mover));
+  c.querySelectorAll("[data-anular]").forEach(b =>
+    b.onclick = () => cambiaCita("cancelar", b.dataset.anular));
   c.querySelectorAll("[data-conectar]").forEach(b =>
     b.onclick = () => conectaCuenta(b.dataset.conectar, b));
   c.querySelectorAll("[data-olvidar]").forEach(b => b.onclick = async () => {

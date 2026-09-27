@@ -273,3 +273,109 @@ def test_con_invitados_la_propuesta_avisa_antes_de_confirmar(monkeypatch):
                       con=["alguien@cliente.com"])
     assert p["avisa_a_invitados"] is True
     assert p["con"] == ["alguien@cliente.com"]
+
+
+# ---------------------------------------------------------------- mover y cancelar
+
+def _hay_cita(monkeypatch, invitados=(), dia_entero=False):
+    inicio = ({"date": "2026-10-07"} if dia_entero
+              else {"dateTime": MIERCOLES.replace(hour=11).isoformat()})
+    fin = ({"date": "2026-10-08"} if dia_entero
+           else {"dateTime": MIERCOLES.replace(hour=12).isoformat()})
+    monkeypatch.setattr(google, "pide", lambda n, url: {
+        "id": "abc", "summary": "Reunion con el cliente", "start": inicio, "end": fin,
+        "attendees": ([{"email": "yo@zenvrax.com", "self": True}] +
+                      [{"email": c} for c in invitados]) if invitados else []})
+
+
+def test_proponer_mover_no_mueve_nada(monkeypatch):
+    _hay_cita(monkeypatch)
+    _escritura_prohibida(monkeypatch)
+    p = citas.propone_cambio("zenvrax", "abc", (MIERCOLES + timedelta(hours=6)).isoformat())
+    assert p["que"] == "mover" and p["antes"] and p["cuando"] != p["antes"]
+
+
+def test_proponer_cancelar_no_cancela_nada(monkeypatch):
+    _hay_cita(monkeypatch)
+    _escritura_prohibida(monkeypatch)
+    p = citas.propone_baja("zenvrax", "abc")
+    assert p["que"] == "cancelar" and p["sin_vuelta"] is True
+
+
+def test_cancelar_una_cita_con_invitados_pide_pin(monkeypatch):
+    """EL TEST QUE IMPORTA de esta parte. Cancelar con invitados les manda un correo diciendo que
+    la reunion se ha anulado, y ese correo no se recoge. Es el mismo peso que publicar."""
+    _hay_cita(monkeypatch, invitados=["cliente@empresa.com"])
+    _escritura_prohibida(monkeypatch)
+    v = citas.propone_baja("zenvrax", "abc")
+    assert v["avisa_a_invitados"] is True
+    with pytest.raises(citas.NoSePuede) as e:
+        citas.confirma_cambio(v["vale"], pin_abierto=False)
+    assert "PIN" in str(e.value)
+
+
+def test_el_vale_sobrevive_a_un_pin_que_falta(monkeypatch):
+    """Si se quemara, habria que rehacer la propuesta cada vez, y eso empuja a dejar el PIN abierto
+    siempre, que es justo lo que se quiere evitar."""
+    _hay_cita(monkeypatch, invitados=["cliente@empresa.com"])
+    hecho = []
+    monkeypatch.setattr(google, "escribe",
+                        lambda n, u, c, metodo="POST": hecho.append((u, metodo)) or {})
+    v = citas.propone_baja("zenvrax", "abc")["vale"]
+    with pytest.raises(citas.NoSePuede):
+        citas.confirma_cambio(v, pin_abierto=False)
+    citas.confirma_cambio(v, pin_abierto=True)
+    assert hecho[0][1] == "DELETE" and "sendUpdates=all" in hecho[0][0]
+
+
+def test_una_cita_sin_invitados_no_pide_pin(monkeypatch):
+    """No sale al mundo: solo cambia el calendario de uno mismo, y se deshace volviendo a moverla."""
+    _hay_cita(monkeypatch)
+    hecho = []
+    monkeypatch.setattr(google, "escribe",
+                        lambda n, u, c, metodo="POST": hecho.append((u, metodo, c)) or {})
+    v = citas.propone_cambio("zenvrax", "abc", (MIERCOLES + timedelta(hours=6)).isoformat())["vale"]
+    citas.confirma_cambio(v, pin_abierto=False)
+    assert hecho[0][1] == "PATCH" and "sendUpdates=none" in hecho[0][0]
+
+
+def test_mover_conserva_lo_que_duraba(monkeypatch):
+    """Una reunion de una hora movida no puede convertirse en media sin que nadie lo pida."""
+    _hay_cita(monkeypatch)
+    hecho = []
+    monkeypatch.setattr(google, "escribe",
+                        lambda n, u, c, metodo="POST": hecho.append(c) or {})
+    v = citas.propone_cambio("zenvrax", "abc", (MIERCOLES + timedelta(hours=6)).isoformat())["vale"]
+    citas.confirma_cambio(v, pin_abierto=True)
+    a = datetime.fromisoformat(hecho[0]["start"]["dateTime"])
+    b = datetime.fromisoformat(hecho[0]["end"]["dateTime"])
+    assert (b - a) == timedelta(hours=1)
+
+
+def test_una_cita_de_dia_entero_no_se_mueve_a_medias(monkeypatch):
+    """No tiene hora que mover. Tratarla como si la tuviera la convertiria en una cita corta."""
+    _hay_cita(monkeypatch, dia_entero=True)
+    _escritura_prohibida(monkeypatch)
+    with pytest.raises(citas.NoSePuede) as e:
+        citas.propone_cambio("zenvrax", "abc", (MIERCOLES + timedelta(hours=6)).isoformat())
+    assert "dia entero" in str(e.value)
+
+
+def test_un_vale_de_crear_no_sirve_para_cancelar(monkeypatch):
+    """Los dos flujos comparten el almacen de propuestas. Si se confundieran, confirmar una cita
+    nueva podria acabar borrando otra."""
+    _agenda(monkeypatch, [])
+    v = citas.propone("zenvrax", "Nueva", (MIERCOLES + timedelta(hours=2)).isoformat())["vale"]
+    with pytest.raises(citas.NoSePuede):
+        citas.confirma_cambio(v, pin_abierto=True)
+
+
+def test_un_vale_de_cancelar_no_sirve_para_crear(monkeypatch):
+    """El caso simetrico del anterior, y el peor de los dos: sin la comprobacion, un vale de
+    cancelar metido en el confirmar de crear armaba una cita a medias y devolvia "creada", asi que
+    el operador leia que estaba hecho cuando no se habia cancelado nada."""
+    _hay_cita(monkeypatch)
+    _escritura_prohibida(monkeypatch)
+    v = citas.propone_baja("zenvrax", "abc")["vale"]
+    with pytest.raises(citas.NoSePuede):
+        citas.confirma(v)
