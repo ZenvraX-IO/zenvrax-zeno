@@ -146,7 +146,10 @@ def test_ningun_endpoint_llama_al_catalogo_ni_dispara_una_accion():
     de_google = {c for c in llamadas if c.startswith("google.")}
     assert de_google <= {"google.conectadas", "google._cliente", "google.enlace_para_autorizar",
                          "google.guarda_permiso", "google.olvida", "google.CUENTAS.items",
-                         "google.CUENTAS.get", "google.ALIAS.items"}, (
+                         "google.CUENTAS.get", "google.ALIAS.items",
+                         # `permisos()` solo lee la configuracion: dice que se PIDE, no concede
+                         # nada. Se usa para comparar con lo concedido y avisar de lo que falta.
+                         "google.permisos"}, (
         f"api.py expone de google algo no previsto: {de_google}")
 
 
