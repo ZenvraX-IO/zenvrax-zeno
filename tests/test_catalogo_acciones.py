@@ -210,3 +210,28 @@ def test_el_congelado_conserva_lo_que_importa():
     for a in json.loads(fichero.read_text(encoding="utf-8"))["acciones"]:
         for campo in ("op", "efecto", "coste_api", "confirmar", "sistema", "etiqueta"):
             assert campo in a, f"al congelar se ha perdido {campo}"
+
+
+def test_el_catalogo_se_puede_importar_donde_no_estan_los_repos(monkeypatch):
+    """EL FALLO QUE TUMBÓ EL CONTENEDOR (2026-09-27), y que estos tests NO cazaban.
+
+    Dentro de la imagen el código vive en `/app/catalogo`, que solo tiene dos padres. El respaldo de
+    `_raiz_del_repo` pedía `parents[3]` y lanzaba `IndexError` AL IMPORTAR: el servicio entero no
+    arrancaba y el contenedor reiniciaba en bucle. En local nunca falló porque siempre hay
+    profundidad de sobra.
+
+    Un repo que no está se responde con "no está", no con una excepción.
+    """
+    from catalogo import recolector as R
+    monkeypatch.setattr(R, "_AQUI", Path("/app/catalogo/recolector.py"))
+    R._raiz_del_repo()                      # no puede lanzar
+    R._repo_hermano("zenvrax-xrise")        # tampoco
+
+
+def test_sin_repos_el_catalogo_cae_al_congelado_y_no_a_una_lista_vacia(monkeypatch):
+    """Con cero acciones, Zeno marcaría TODOS los botones "sin contrato", que se lee como un fallo
+    del sistema y no como una falta de datos."""
+    monkeypatch.setattr(C, "sistemas_ausentes", lambda: ["cockpit", "xrise"])
+    acciones = C.catalogo()
+    assert len(acciones) >= 30, (
+        f"sin los repos tendría que usar el catálogo congelado y trajo {len(acciones)} acciones")

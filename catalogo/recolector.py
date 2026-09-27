@@ -47,7 +47,12 @@ def _raiz_del_repo() -> pathlib.Path:
     for padre in _AQUI.parents:
         if (padre / "cockpit" / "api").is_dir():
             return padre
-    return _AQUI.parents[3]
+    # No se encontro. Se devuelve el propio directorio y NO `parents[3]`: dentro del contenedor el
+    # codigo vive en /app/catalogo, que solo tiene dos padres, y pedir el tercero lanzaba IndexError
+    # AL IMPORTAR, o sea el servicio entero no arrancaba y el contenedor reiniciaba en bucle.
+    # Un repo que no esta se responde con "no esta" (lo dice `sistemas_ausentes`), no con una
+    # excepcion. Se vio desplegando, no en local, donde siempre hay profundidad de sobra.
+    return _AQUI.parent
 
 
 def _repo_hermano(nombre: str) -> pathlib.Path:
@@ -56,7 +61,8 @@ def _repo_hermano(nombre: str) -> pathlib.Path:
         candidato = padre / nombre
         if candidato.is_dir():
             return candidato
-    return _raiz_del_repo().parent / nombre
+    # Mismo motivo: si no esta, se devuelve una ruta que no existe y `sistemas_ausentes` lo dira.
+    return _raiz_del_repo() / nombre
 
 
 #: Repos en el disco. El del cockpit es este mismo; Xrise es un repo aparte.
