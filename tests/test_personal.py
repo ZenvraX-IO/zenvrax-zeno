@@ -19,6 +19,7 @@ Puros: sin red y sin tocar Google.
 """
 import ast
 import sys
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -204,3 +205,31 @@ def test_sin_cliente_configurado_se_dice_cual_falta(monkeypatch):
     with pytest.raises(google.SinConfigurar) as e:
         google.enlace_para_autorizar("gutlyn")
     assert "GUTLYN" in str(e.value)
+
+
+def test_el_enlace_acota_el_dominio_y_fuerza_el_selector(monkeypatch):
+    """MEDIDO CON EL OPERADOR EL 2026-09-27: al pulsar Conectar, Google cogia la cuenta personal que
+    ya tenia abierta en el navegador y, al ser la aplicacion INTERNA de la organizacion, respondia
+    con el acceso bloqueado.
+
+    Dos parametros lo arreglan y los dos hacen falta:
+      · `hd` acota el selector al dominio de esa cuenta, asi que una de gmail.com ni aparece.
+      · `select_account` obliga a que el selector SALGA, en vez de reutilizar la sesion abierta.
+    `login_hint` solo sugiere, y por eso no bastaba.
+    """
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "id")
+    enlace = google.enlace_para_autorizar("zenvrax")
+    trozos = urllib.parse.parse_qs(urllib.parse.urlparse(enlace).query)
+    assert trozos["hd"] == ["zenvrax.com"], "sin hd, el selector ofrece cuentas de fuera"
+    assert "select_account" in trozos["prompt"][0], "sin esto reutiliza la sesion abierta"
+    assert "consent" in trozos["prompt"][0], "sin consent Google no entrega el token de refresco"
+
+    enlace_g = google.enlace_para_autorizar("gutlyn")
+    otros = urllib.parse.parse_qs(urllib.parse.urlparse(enlace_g).query)
+    assert otros["hd"] == ["gutlyn.com"], "cada cuenta acota a SU dominio, no a uno fijo"
+
+
+def test_el_dominio_sale_de_la_cuenta_y_no_esta_escrito_a_mano():
+    """Si el dominio fuera una constante, añadir una tercera cuenta la mandaria al dominio de otra."""
+    assert google._dominio("a@b.com") == "b.com"
+    assert google._dominio("raro") == "", "sin arroba no hay dominio que acotar, y no se inventa"

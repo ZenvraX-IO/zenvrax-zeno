@@ -155,11 +155,23 @@ def enlace_para_autorizar(negocio: str) -> str:
         # `offline` + `consent` para que Google entregue el token de refresco: sin el, el permiso
         # caduca en una hora y hay que volver a autorizar a mano cada vez.
         "access_type": "offline",
-        "prompt": "consent",
+        # `select_account` ademas de `consent` porque sin el Google coge la sesion que ya haya abierta
+        # en el navegador. Medido el 2026-09-27 con el operador: le cogia su cuenta personal y, al ser
+        # una aplicacion INTERNA de la organizacion, Google respondia con el acceso bloqueado. Con
+        # esto sale el selector y elige la cuenta que toca.
+        "prompt": "select_account consent",
         "login_hint": CUENTAS[negocio],
+        # `hd` es el filtro de verdad: limita el selector al dominio de ESA cuenta, asi que una
+        # personal de gmail.com ni aparece. `login_hint` solo sugiere; esto acota.
+        "hd": _dominio(CUENTAS[negocio]),
         "state": negocio,
     }
     return "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(parametros)
+
+
+def _dominio(correo: str) -> str:
+    """El dominio de una cuenta, que es lo que Google entiende por organizacion."""
+    return correo.rsplit("@", 1)[-1] if "@" in correo else ""
 
 
 def _pide_token(cuerpo: dict) -> dict:
