@@ -353,9 +353,26 @@ def plan_del_dia() -> tuple[dict, list[str]]:
         return {}, [f"el plan del dia: {err}"]
 
     def limpia(t):
-        """Los titulos vienen con un emoji delante y un guion separando el tipo del nombre."""
+        """El titulo, sin el emoji de delante ni la raya larga.
+
+        Los titulos del cockpit vienen como "<emoji> Tarea - La landing...". El emoji es decoracion
+        de otra pantalla y aqui solo roba sitio; la raya larga esta prohibida en todo lo que sale de
+        esta casa, y colarse por un dato leido cuenta igual.
+
+        EL ORDEN IMPORTA: la raya se sustituye ANTES de quitar lo que no es texto. Al reves, el
+        filtro se la comia y dejaba dos espacios en medio de la frase.
+        """
         t = str(t or "").strip()
-        return t
+        t = t.replace("—", ", ").replace("–", ", ")
+        # Se conserva letra, numero, espacio y puntuacion normal: eso deja fuera los emoji y los
+        # selectores de variante que los acompañan, sin tener que listarlos uno a uno.
+        t = "".join(c for c in t if c.isalnum() or c.isspace() or c in ",.;:()[]'\"!?+-/%$&@#")
+        t = " ".join(t.split())
+        # "Tarea - La landing" deja "Tarea , La landing": la raya venia con espacio delante. Es el
+        # mismo detalle que ya se arreglo en las respuestas del chat.
+        for signo in (",", ".", ";", ":"):
+            t = t.replace(" " + signo, signo)
+        return t.strip(" ,-")
 
     plan = datos.get("plan") or []
     urgentes = [p for p in plan if p.get("severity") == "urgent"]

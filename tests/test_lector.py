@@ -224,3 +224,23 @@ def test_solo_salen_los_avisos_que_no_estan_bien(monkeypatch):
     assert len(avisos) == 2, [a["texto"] for a in avisos]
     assert any("57" in a["texto"] for a in avisos)
     assert not any("rotura" in a["texto"] for a in avisos)
+
+
+def test_el_titulo_pierde_el_emoji_y_la_raya_larga(monkeypatch):
+    """Los titulos del cockpit vienen con un emoji delante y raya larga en medio. El emoji es
+    decoracion de otra pantalla y roba sitio en un movil; la raya larga esta prohibida en todo lo
+    que sale de esta casa, y colarse por un dato leido cuenta igual.
+
+    EL ORDEN IMPORTA y lo aprendi probandolo: si se filtra antes de sustituir, el filtro se come la
+    raya y deja dos espacios en medio de la frase.
+    """
+    monkeypatch.setattr(lector, "_seguro", lambda b, r, c=None: (
+        {"focus": {"title": "\U0001f5c2\ufe0f Tarea \u2014 La versión inglesa no existe"},
+         "plan": [{"title": "\U0001f4ac Respuesta a DM \u2014 Era Emre", "severity": "urgent"}],
+         "counts": {}}, None))
+    plan, _ = lector.plan_del_dia()
+    assert plan["foco"]["titulo"] == "Tarea, La versión inglesa no existe"
+    assert plan["urgentes"][0]["titulo"] == "Respuesta a DM, Era Emre"
+    for t in (plan["foco"]["titulo"], plan["urgentes"][0]["titulo"]):
+        assert "\u2014" not in t and "  " not in t
+        assert t == t.strip()
