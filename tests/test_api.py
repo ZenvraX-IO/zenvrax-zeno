@@ -200,3 +200,37 @@ def test_la_limpieza_se_aplica_de_verdad_a_la_respuesta():
     import inspect
     from servicio import chat as chat_mod
     assert "_limpia(texto)" in inspect.getsource(chat_mod.responde)
+
+
+def test_el_chat_recibe_el_estado_de_los_negocios_y_las_ventas():
+    """EL FALLO QUE VIO EL OPERADOR. Preguntó *"situación actual de ventas de GutLyn"* y el chat
+    contestó que no tenía el dato, teniendo Zeno la forma de leerlo: el contexto solo llevaba lo
+    pendiente y las colas.
+
+    Un asistente que no sabe cómo va el negocio no es un asistente, es una bandeja.
+    """
+    import inspect
+    from servicio import api as m
+    fuente = inspect.getsource(m.chat)
+    assert "lector.estado()" in fuente, "el chat no pide el estado de los negocios"
+    assert "lector.ventas_gutlyn()" in fuente, "el chat no pide las ventas"
+    assert "estado, ventas" in fuente, "los pide pero no se los pasa al modelo"
+
+
+def test_el_contexto_pinta_los_kpis_con_su_alerta():
+    """Si los KPIs llegaran sin la marca de alerta, el chat diría "beneficio -99" como un dato más,
+    cuando el cockpit ya lo tiene señalado como malo."""
+    from servicio.chat import _contexto
+    estado = {"zenvrax": {"negocios": [{"nombre": "Zenvrax IO", "sub": "c", "kpis": [
+        {"k": "Beneficio/mes", "v": "$-99", "alerta": "bad"}]}]}}
+    texto = _contexto([], [], [], [], estado, None)
+    assert "Beneficio/mes: $-99" in texto and "(MAL)" in texto
+
+
+def test_un_negocio_sin_cifras_dice_por_que():
+    """GutLyn no tiene ventas registradas todavía. Pintarlo vacío haría que el chat dijera que no
+    sabe, cuando el dato es que aún no hay nada conectado."""
+    from servicio.chat import _contexto
+    estado = {"zenvrax": {"negocios": [{"nombre": "GutLyn+", "sub": "e", "kpis": [],
+                                        "nota": "Sin ventas registradas todavia"}]}}
+    assert "Sin ventas registradas" in _contexto([], [], [], [], estado, None)

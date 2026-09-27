@@ -170,6 +170,12 @@ async def chat(body: Pregunta, authorization: str = Header(default="")):
 
     lista, fallos = lector.pendientes()
     colas, fallos_colas = lector.pendiente_completo()
+    # El ESTADO va siempre. El operador pregunto por las ventas de GutLyn y el chat contesto que no
+    # tenia el dato, teniendo Zeno la forma de leerlo: un asistente que no sabe como va el negocio
+    # es una bandeja. Son dos llamadas mas por pregunta, y valen lo que cuestan.
+    estado, fallos_estado = lector.estado()
+    ventas, fallos_ventas = lector.ventas_gutlyn()
+    fallos_colas = fallos_colas + fallos_estado + fallos_ventas
     # El corpus solo se consulta si la pregunta suena a documentacion: cada consulta de mas es
     # tiempo de respuesta y tokens de contexto que se pagan.
     documentos = []
@@ -179,7 +185,8 @@ async def chat(body: Pregunta, authorization: str = Header(default="")):
         documentos, _, mas_fallos = lector.documentacion(pregunta)
         fallos_colas = fallos_colas + mas_fallos
     try:
-        return chat_mod.responde(pregunta, lista, colas, fallos + fallos_colas, documentos)
+        return chat_mod.responde(pregunta, lista, colas, fallos + fallos_colas,
+                                 documentos, estado, ventas)
     except chat_mod.TopeAlcanzado as e:
         raise HTTPException(429, f"Tope diario de preguntas alcanzado ({e})") from e
     except chat_mod.SinClaveDeIA as e:

@@ -97,10 +97,52 @@ def preguntas_hoy() -> int:
     return _gastado.get(_hoy(), 0)
 
 
-def _contexto(pendientes: list, colas: list, fallos: list, documentos: list) -> str:
+def _kpis(negocio: dict) -> str:
+    lineas = []
+    for k in negocio.get("kpis") or []:
+        aviso = {"bad": "  (MAL)", "warn": "  (ojo)"}.get(k.get("alerta"), "")
+        lineas.append(f"    {k.get('k')}: {k.get('v')}{aviso}")
+    if not lineas and negocio.get("nota"):
+        lineas.append("    " + negocio["nota"])
+    salud = negocio.get("salud") or {}
+    if salud:
+        lineas.append(f"    workflows: {salud.get('activos')} activos de {salud.get('total')}, "
+                      f"con error {salud.get('errores')}")
+    return "\n".join(lineas)
+
+
+def _contexto(pendientes: list, colas: list, fallos: list, documentos: list,
+              estado: dict | None = None, ventas: dict | None = None) -> str:
+    """Todo lo que Zeno sabe, en texto.
+
+    EL ESTADO Y LAS VENTAS ENTRAN AQUI desde el 2026-09-27. Antes solo iban lo pendiente y las
+    colas, y el operador pregunto "situacion actual de ventas de GutLyn": el chat contesto que no
+    tenia el dato, teniendo Zeno la forma de leerlo. Un asistente que no puede decir como va el
+    negocio no es un asistente, es una bandeja.
+    """
     partes = []
     if fallos:
-        partes.append("FUENTES QUE NO HAN RESPONDIDO (dilo si das numeros): " + " · ".join(fallos))
+        partes.append("FUENTES QUE NO HAN RESPONDIDO (dilo si das numeros): " + " | ".join(fallos))
+
+    for negocio in ((estado or {}).get("zenvrax") or {}).get("negocios") or []:
+        partes.append(f"{negocio.get('nombre')} ({negocio.get('sub')}):\n" + _kpis(negocio))
+
+    alertas = [a for a in ((estado or {}).get("gutlyn") or {}).get("alerts") or []
+               if a.get("value") and a.get("tone") != "ok"]
+    if alertas:
+        partes.append("AVISOS DE GUTLYN EN XRISE:\n" + "\n".join(
+            f"    {a.get('label')}: {a.get('value')}" for a in alertas))
+
+    if ventas:
+        # Las cifras van en crudo: resumirlas aqui seria decidir por el modelo cuales importan.
+        partes.append("VENTAS DE GUTLYN (de Xrise):\n"
+                      + json.dumps(ventas, ensure_ascii=False)[:1400])
+
+    plan = (estado or {}).get("plan_del_dia") or {}
+    foco = plan.get("focus") or {}
+    if foco:
+        partes.append(f"LO PRIMERO DE HOY: {foco.get('title')} | {foco.get('body') or ''}")
+
     if colas:
         partes.append("TODO LO PENDIENTE:\n" + "\n".join(
             f"  {c['cuantos']} · {c['titulo']} ({c['negocio']})" for c in colas))
@@ -117,7 +159,8 @@ def _contexto(pendientes: list, colas: list, fallos: list, documentos: list) -> 
 
 
 def responde(pregunta: str, pendientes: list, colas: list, fallos: list,
-             documentos: list) -> dict:
+             documentos: list, estado: dict | None = None,
+             ventas: dict | None = None) -> dict:
     """Una respuesta y lo que ha costado. Lanza si falta la clave o se alcanzó el tope."""
     if not CLAVE_ANTHROPIC:
         raise SinClaveDeIA("no hay clave de Anthropic configurada")
@@ -127,7 +170,7 @@ def responde(pregunta: str, pendientes: list, colas: list, fallos: list,
 
     cuerpo = json.dumps({
         "model": MODELO,
-        "max_tokens": 700,
+        "max_tokens": 900,
         "temperature": 0.2,          # respuestas con contexto: la tabla de la casa dice 0.2
         "system": SISTEMA,
         "messages": [{"role": "user",

@@ -35,7 +35,18 @@
   .marca u{position:absolute;left:11px;top:9px;width:5px;height:5px;border-radius:50%;
            background:var(--ambar);z-index:2}
 
-  main{flex:1;overflow-y:auto;padding:14px 16px 20px}
+  /* `overscroll-behavior:contain` apaga el rebote propio del navegador: sin eso, en iOS el gesto
+     lo captura Safari y el tiron de recargar no llega nunca a la aplicacion. */
+  main{flex:1;overflow-y:auto;padding:14px 16px 20px;overscroll-behavior:contain;
+       position:relative}
+  #tiron{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;
+         justify-content:center;color:var(--gris);font-size:12.5px;pointer-events:none;
+         height:0;overflow:hidden}
+  #tiron.listo{color:var(--ambar)}
+  #tiron .rueda{width:15px;height:15px;border:2px solid var(--linea);border-top-color:var(--ambar);
+                border-radius:50%;margin-right:8px;display:inline-block}
+  #tiron.girando .rueda{animation:gira .7s linear infinite}
+  @keyframes gira{to{transform:rotate(360deg)}}
   .pie{display:flex;border-top:1px solid var(--linea);padding-bottom:var(--abajo);background:var(--negro)}
   .pie button{flex:1;background:none;border:0;color:var(--gris);padding:12px 0 14px;font-size:12px}
   .pie button.on{color:var(--ambar)}
@@ -154,6 +165,7 @@
   </div>
 
   <main>
+    <div id="tiron"><span class="rueda"></span><span id="tiron-texto"></span></div>
     <section id="v-pendientes"></section>
     <section id="v-chat" hidden>
       <div id="burbujas" class="burbujas"></div>
@@ -405,6 +417,60 @@ function ver(vista) {
   }
   $("#escribir").hidden = vista !== "chat";
 }
+
+// ---------------------------------------------------------------- tirar para actualizar
+//
+// El operador: *"coloca actualizar al bajarlo para no tener que salir de la aplicacion"*. En una
+// PWA instalada no hay barra del navegador, asi que sin esto la unica forma de recargar es cerrarla
+// y volver a abrirla.
+//
+// Solo se activa si la lista YA esta arriba del todo (`scrollTop <= 0`): si no, cualquier scroll
+// hacia arriba dispararia una recarga a mitad de lectura.
+const UMBRAL = 70;          // lo que hay que tirar para que cuente. Menos, y se recarga sin querer
+const TOPE = 110;           // hasta donde acompaña el indicador, para que el gesto tenga fin
+let inicioY = null, tirando = false;
+
+function alturaTiron(px, texto, clase) {
+  const t = $("#tiron");
+  t.style.height = px + "px";
+  $("#tiron-texto").textContent = texto;
+  t.className = clase;
+}
+
+function recargaVista() {
+  const actual = document.querySelector(".pie button.on")?.dataset.vista || "pendientes";
+  if (actual === "buscar") return busca();
+  if (actual === "chat") return;          // recargar un chat seria borrar la conversacion
+  return cargaPendientes();
+}
+
+const zona = document.querySelector("main");
+
+zona.addEventListener("touchstart", (e) => {
+  inicioY = zona.scrollTop <= 0 ? e.touches[0].clientY : null;
+  tirando = false;
+}, { passive: true });
+
+zona.addEventListener("touchmove", (e) => {
+  if (inicioY === null) return;
+  const avance = e.touches[0].clientY - inicioY;
+  if (avance <= 0) { if (tirando) { alturaTiron(0, "", ""); tirando = false; } return; }
+  tirando = true;
+  // La resistencia (dividir entre 2) es lo que hace que el gesto se sienta fisico en vez de
+  // pegajoso: el dedo avanza mas que el indicador.
+  const alto = Math.min(avance / 2, TOPE);
+  alturaTiron(alto, alto >= UMBRAL ? "suelta para actualizar" : "tira para actualizar",
+              alto >= UMBRAL ? "listo" : "");
+}, { passive: true });
+
+zona.addEventListener("touchend", async () => {
+  if (inicioY === null || !tirando) { inicioY = null; return; }
+  const alto = parseInt($("#tiron").style.height || "0", 10);
+  inicioY = null; tirando = false;
+  if (alto < UMBRAL) { alturaTiron(0, "", ""); return; }
+  alturaTiron(34, "actualizando", "girando");
+  try { await recargaVista(); } finally { alturaTiron(0, "", ""); }
+});
 
 $("#btn-entrar").onclick = entrar;
 $("#btn-codigo").onclick = comprobarCodigo;

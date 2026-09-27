@@ -231,3 +231,21 @@ def pendiente_completo() -> tuple[list[dict], list[str]]:
         fallos.extend(datos.get("fallos") or [])
     colas.sort(key=lambda c: (-c["cuantos"], c["negocio"]))
     return colas, fallos
+
+
+def ventas_gutlyn() -> tuple[dict, list[str]]:
+    """Las cifras de venta de GutLyn, de Xrise, que es donde vive el ecommerce.
+
+    POR QUE EXISTE. El operador le pregunto al chat *"situacion actual de ventas de GutLyn"* y
+    contesto que no tenia el dato. Tenia razon en quejarse: Zeno leia lo pendiente y los avisos,
+    pero no las VENTAS, que estan en `/dashboard/overview` y `/dashboard/pnl` de Xrise. Un asistente
+    que no puede contestar como va el negocio no es un asistente, es una bandeja.
+    """
+    fuera, fallos = {}, []
+    for etiqueta, ruta in (("resumen", "/dashboard/overview"), ("perdidas_y_ganancias", "/dashboard/pnl")):
+        datos, err = _seguro(XRISE, ruta, {"X-Zeno-Org": ORG})
+        if err:
+            fallos.append(f"ventas de GutLyn ({etiqueta}): {err}")
+        else:
+            fuera[etiqueta] = datos
+    return fuera, fallos
