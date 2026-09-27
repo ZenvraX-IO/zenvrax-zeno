@@ -128,8 +128,17 @@
   .cuenta .c span{color:var(--gris);font-size:11.5px}
   .punto{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:#4a4a54}
   .punto.si{background:#4fbf87}
+  /* El alias no tiene estado propio: no esta ni conectado ni por conectar, se lee con su buzon. */
+  .punto.alias{background:none;border:1px solid var(--linea)}
   .apartado{font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:var(--gris);
-            margin:20px 0 10px}
+            margin:20px 0 10px;display:flex;align-items:center;gap:10px}
+  /* El filtro por negocio: el operador pregunto "cuales vienen de GutLyn y cuales de la
+     consultoria". La etiqueta de cada correo ya lo decia, pero obligaba a leerlos uno a uno. */
+  .filtros{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 12px}
+  .filtro{background:var(--carbon);border:1px solid var(--linea);border-radius:16px;
+          padding:7px 13px;font-size:12.5px;color:var(--gris);cursor:pointer;min-height:34px}
+  .filtro.on{border-color:var(--ambar);color:var(--ambar);background:var(--ambar-suave)}
+  .filtro b{color:inherit;font-weight:600}
   .correo{display:block;text-decoration:none;color:inherit;background:var(--carbon);
           border:1px solid var(--linea);border-radius:11px;padding:11px 12px;margin-bottom:9px;
           min-height:44px}
@@ -520,57 +529,51 @@ async function conectaCuenta(negocio, boton) {
   }
 }
 
-function pintaCuentas(cuentas) {
+function pintaCuentas(cuentas, alias) {
   let h = "";
-  // Un buzon puede tener dos nombres. Si dos cuentas conectadas apuntan al MISMO buzon, la segunda
-  // es un alias: se dice, en vez de enseñar dos filas que parecen dos bandejas y no lo son.
-  const buzones = {};
-  for (const c of cuentas) if (c.conectada && c.buzon) buzones[c.buzon] = (buzones[c.buzon] || 0) + 1;
-  const vistos = {};
   for (const c of cuentas) {
-    const pendiente = !c.conectada;
-    let esAlias = false;
-    if (c.conectada && c.buzon) {
-      esAlias = buzones[c.buzon] > 1 && vistos[c.buzon];
-      vistos[c.buzon] = true;
-    }
-    let estado;
-    if (esAlias) estado = "alias de " + c.buzon + ", misma bandeja";
-    else if (c.conectada) estado = "solo lectura";
-    else estado = c.configurada ? "sin conectar" : "falta configurarla";
-    h += '<div class="cuenta"><span class="punto' + (c.conectada && !esAlias ? " si" : "") +
-         '"></span>' +
+    const estado = c.conectada ? "solo lectura"
+                 : c.configurada ? "sin conectar" : "falta configurarla";
+    h += '<div class="cuenta"><span class="punto' + (c.conectada ? " si" : "") + '"></span>' +
          '<div class="c"><b>' + esc(c.cuenta) + "</b><span>" + esc(estado) + "</span></div>";
-    if (pendiente && c.configurada)
+    if (!c.conectada && c.configurada)
       h += '<button class="b primaria" data-conectar="' + esc(c.negocio) + '">Conectar</button>';
     else if (c.conectada)
       h += '<button class="b sin" data-olvidar="' + esc(c.negocio) + '">Quitar</button>';
     h += "</div>";
   }
+  // Un ALIAS no se conecta: su buzon ya esta autorizado. Se enseña para que se vea que Zeno sabe
+  // distinguir sus correos, pero sin boton y sin punto de estado, porque no hay nada que hacer con
+  // el. Antes salia como una cuenta mas, con un Conectar que no podia funcionar.
+  for (const a of alias || [])
+    h += '<div class="cuenta"><span class="punto alias"></span>' +
+         '<div class="c"><b>' + esc(a.cuenta) + "</b><span>alias de " + esc(a.de) +
+         ", se lee con esa</span></div></div>";
   return h;
 }
 
 async function cargaPersonal() {
   const c = $("#v-personal");
   c.innerHTML = '<div class="vacio">cargando…</div>';
-  let cuentas = [], datos = { correos: [], agenda: [], fallos: [] };
+  let cuentas = [], alias = [], datos = { correos: [], agenda: [], fallos: [] };
   try {
     const r = await Promise.all([api("/api/google/cuentas"), api("/api/personal")]);
     cuentas = r[0].cuentas || [];
+    alias = r[0].alias || [];
     datos = r[1];
   } catch (e) {
     c.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
     return;
   }
 
-  let html = pintaCuentas(cuentas);
+  let html = pintaCuentas(cuentas, alias);
   // Los fallos van arriba y siempre, por lo mismo que en pendiente: una bandeja corta sin aviso se
   // lee como "tengo poco correo" cuando la verdad puede ser "falta una cuenta entera".
   for (const f of datos.fallos || [])
     html += '<div class="aviso-fallo">' + esc(f) + "</div>";
 
   if (!cuentas.some(x => x.conectada)) {
-    html += '<div class="vacio">Conecta una cuenta y aquí verás el correo sin leer' +
+    html += '<div class="vacio">Conecta tu cuenta y aquí verás el correo sin leer' +
             "<br>y las citas de los próximos días.</div>";
     c.innerHTML = html;
     enchufaBotonesDeCuenta(c);
@@ -578,26 +581,64 @@ async function cargaPersonal() {
   }
 
   const agenda = datos.agenda || [];
-  html += '<div class="apartado">Próximas citas</div>';
-  if (!agenda.length) html += '<div class="vacio">nada en los próximos días</div>';
+  html += '<div class="apartado">Próximas citas · 14 días</div>';
+  if (!agenda.length) html += '<div class="vacio">nada en las próximas dos semanas</div>';
   for (const a of agenda)
     html += '<a class="cita" href="' + esc(a.abrir) + '" target="_blank" rel="noopener">' +
             '<span class="h">' + esc(horaCorta(a.cuando, a.todo_el_dia)) + "</span>" +
             '<span class="d"><b>' + esc(a.titulo) + "</b><span>" + esc(a.negocio) +
             (a.con && a.con.length ? " · " + a.con.length + " personas" : "") + "</span></span></a>";
 
-  const correos = datos.correos || [];
-  html += '<div class="apartado">Sin leer · ' + correos.length + "</div>";
-  if (!correos.length) html += '<div class="vacio">bandeja limpia</div>';
-  for (const m of correos)
-    html += '<a class="correo" href="' + esc(m.abrir) + '" target="_blank" rel="noopener">' +
-            '<span class="de"><b>' + esc(soloNombre(m.de)) + "</b><i>" + esc(m.negocio) + " · " +
-            esc(horaCorta(m.fecha)) + "</i></span>" +
-            '<div class="as">' + esc(m.asunto) + "</div>" +
-            '<div class="re">' + esc(m.resumen) + "</div></a>";
+  correosEnPantalla = datos.correos || [];
+  html += '<div class="apartado">Sin leer · ' + correosEnPantalla.length + "</div>";
+  html += '<div class="filtros" id="filtros"></div><div id="lista-correos"></div>';
 
   c.innerHTML = html;
   enchufaBotonesDeCuenta(c);
+  pintaCorreos();
+}
+
+// Se guardan aparte para poder filtrar sin volver a pedirlos a Google: cada lectura son varias
+// llamadas a Gmail, y filtrar es una pregunta sobre lo que ya se tiene delante.
+let correosEnPantalla = [];
+let filtroNegocio = "";
+
+function pintaCorreos() {
+  const cajaF = $("#filtros"), caja = $("#lista-correos");
+  if (!cajaF || !caja) return;
+
+  const cuantos = {};
+  for (const m of correosEnPantalla) cuantos[m.negocio] = (cuantos[m.negocio] || 0) + 1;
+  const negocios = Object.keys(cuantos).sort();
+  // Con un solo negocio el filtro no filtra nada: se esconde en vez de ocupar una fila.
+  let f = "";
+  if (negocios.length > 1) {
+    f += '<button class="filtro' + (filtroNegocio ? "" : " on") + '" data-n="">Todos <b>' +
+         correosEnPantalla.length + "</b></button>";
+    for (const n of negocios)
+      f += '<button class="filtro' + (filtroNegocio === n ? " on" : "") + '" data-n="' + esc(n) +
+           '">' + esc(n) + " <b>" + cuantos[n] + "</b></button>";
+  }
+  cajaF.innerHTML = f;
+  cajaF.querySelectorAll(".filtro").forEach(b => b.onclick = () => {
+    filtroNegocio = b.dataset.n;
+    pintaCorreos();
+  });
+
+  const lista = filtroNegocio
+    ? correosEnPantalla.filter(m => m.negocio === filtroNegocio)
+    : correosEnPantalla;
+  let h = "";
+  if (!lista.length)
+    h = '<div class="vacio">' + (correosEnPantalla.length ? "nada de " + esc(filtroNegocio)
+                                                          : "bandeja limpia") + "</div>";
+  for (const m of lista)
+    h += '<a class="correo" href="' + esc(m.abrir) + '" target="_blank" rel="noopener">' +
+         '<span class="de"><b>' + esc(soloNombre(m.de)) + "</b><i>" + esc(m.negocio) + " · " +
+         esc(horaCorta(m.fecha)) + "</i></span>" +
+         '<div class="as">' + esc(m.asunto) + "</div>" +
+         '<div class="re">' + esc(m.resumen) + "</div></a>";
+  caja.innerHTML = h;
 }
 
 function enchufaBotonesDeCuenta(c) {

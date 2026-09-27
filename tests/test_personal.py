@@ -70,9 +70,22 @@ def test_enviar_y_mover_citas_van_juntos_y_aparte():
 
 # ---------------------------------------------------------------- las dos cuentas no se mezclan
 
-def test_hay_dos_cuentas_y_cada_una_es_de_su_negocio():
-    assert google.CUENTAS["zenvrax"] == "ghidalgo@zenvrax.com"
-    assert google.CUENTAS["gutlyn"] == "ghidalgo@gutlyn.com"
+def test_lo_que_se_conecta_y_lo_que_solo_etiqueta_estan_separados():
+    """MEDIDO EL 2026-09-27: `ghidalgo@gutlyn.com` es un ALIAS del mismo buzon, no otra cuenta.
+
+    Mientras estuvo en CUENTAS, la pantalla ofrecia un boton Conectar que no podia hacer nada, y
+    cuando no estaba autorizado avisaba en rojo de que faltaba correo cuando no faltaba ninguno.
+    El operador: *"no tiene mucho sentido ponerla de GutLyn para conectar"*.
+
+    CUENTAS son los buzones que se AUTORIZAN. ALIAS son direcciones que solo sirven para decir de
+    que negocio es cada correo. El dia que GutLyn tenga cuenta propia, su linea se mueve de una a
+    otra y el boton vuelve solo.
+    """
+    assert google.CUENTAS == {"zenvrax": "ghidalgo@zenvrax.com"}
+    assert google.ALIAS["gutlyn"] == "ghidalgo@gutlyn.com"
+    assert "gutlyn" not in google.CUENTAS, "un alias no se conecta: no hay nada que autorizar"
+    assert google.direcciones()["zenvrax"] == "ghidalgo@zenvrax.com"
+    assert set(google.direcciones()) == set(google.CUENTAS) | set(google.ALIAS)
 
 
 def test_olvidar_una_cuenta_no_toca_la_otra(monkeypatch, tmp_path):
@@ -87,16 +100,29 @@ def test_olvidar_una_cuenta_no_toca_la_otra(monkeypatch, tmp_path):
     assert "zenvrax" in quedan and "gutlyn" not in quedan
 
 
-def test_una_cuenta_sin_conectar_no_tumba_la_otra_y_SE_DICE(monkeypatch):
-    """EL TEST QUE IMPORTA. Si la de GutLyn no está conectada y Zeno enseña solo la de Zenvrax sin
-    avisar, el operador lee "tengo poco correo" cuando la verdad es "falta la mitad"."""
-    monkeypatch.setattr(google, "conectadas", lambda: {"zenvrax": {"cuenta": "z"}})
+def test_un_buzon_sin_conectar_se_dice(monkeypatch):
+    """EL TEST QUE IMPORTA. Si un buzon no esta conectado y Zeno enseña el resto sin avisar, el
+    operador lee "tengo poco correo" cuando la verdad es "falta un buzon entero"."""
+    monkeypatch.setattr(google, "CUENTAS", {"zenvrax": "a@zenvrax.com", "otra": "b@otra.com"})
+    monkeypatch.setattr(google, "conectadas", lambda: {"zenvrax": {"buzon": "a@zenvrax.com"}})
     monkeypatch.setattr(personal, "correos", lambda n, **k: [{"asunto": "uno", "negocio": n}])
     monkeypatch.setattr(personal, "agenda", lambda n, **k: [])
     datos, fallos = personal.bandeja()
     assert len(datos["correos"]) == 1
-    assert any("gutlyn.com" in f for f in fallos), (
-        "la cuenta que falta tiene que aparecer en los fallos, no desaparecer")
+    assert any("b@otra.com" in f for f in fallos), (
+        "el buzon que falta tiene que aparecer en los fallos, no desaparecer")
+
+
+def test_un_alias_no_cuenta_como_buzon_que_falta(monkeypatch):
+    """Y AL REVES, que es lo que pasaba en pantalla: el alias salia como "sin conectar todavia" en
+    rojo, o sea avisando de que faltaba correo. No faltaba: su buzon ya estaba leido."""
+    monkeypatch.setattr(google, "conectadas", lambda: {"zenvrax": {"buzon": "ghidalgo@zenvrax.com"}})
+    monkeypatch.setattr(personal, "correos", lambda n, **k: [{"asunto": "uno", "negocio": n}])
+    monkeypatch.setattr(personal, "agenda", lambda n, **k: [])
+    datos, fallos = personal.bandeja()
+    assert fallos == [], f"un alias no falta por conectar: {fallos}"
+    assert "gutlyn" in datos["buzones"][0]["negocios"], (
+        "pero si tiene que viajar con el buzon, que es lo que etiqueta sus correos")
 
 
 def test_un_fallo_de_una_cuenta_no_borra_lo_de_la_otra(monkeypatch):
@@ -138,7 +164,7 @@ def test_zeno_solo_hace_GET_contra_google():
     llamadas = [n.func.attr for n in ast.walk(arbol) if isinstance(n, ast.Call)
                 and isinstance(n.func, ast.Attribute) and n.func.value.__class__.__name__ == "Name"
                 and getattr(n.func.value, "id", "") == "google"]
-    assert set(llamadas) <= {"pide", "conectadas"}, (
+    assert set(llamadas) <= {"pide", "conectadas", "direcciones"}, (
         f"personal.py llama a google con algo que no es leer: {set(llamadas)}")
 
 
@@ -200,11 +226,11 @@ def test_si_solo_hay_un_cliente_comun_sirve_para_las_dos(monkeypatch):
 
 def test_sin_cliente_configurado_se_dice_cual_falta(monkeypatch):
     """Un mensaje genérico obligaría a adivinar cuál de las dos cuentas está sin configurar."""
-    for v in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID_GUTLYN"):
+    for v in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_ID_ZENVRAX"):
         monkeypatch.delenv(v, raising=False)
     with pytest.raises(google.SinConfigurar) as e:
-        google.enlace_para_autorizar("gutlyn")
-    assert "GUTLYN" in str(e.value)
+        google.enlace_para_autorizar("zenvrax")
+    assert "ZENVRAX" in str(e.value)
 
 
 def test_el_enlace_acota_el_dominio_y_fuerza_el_selector(monkeypatch):
@@ -224,9 +250,12 @@ def test_el_enlace_acota_el_dominio_y_fuerza_el_selector(monkeypatch):
     assert "select_account" in trozos["prompt"][0], "sin esto reutiliza la sesion abierta"
     assert "consent" in trozos["prompt"][0], "sin consent Google no entrega el token de refresco"
 
-    enlace_g = google.enlace_para_autorizar("gutlyn")
-    otros = urllib.parse.parse_qs(urllib.parse.urlparse(enlace_g).query)
-    assert otros["hd"] == ["gutlyn.com"], "cada cuenta acota a SU dominio, no a uno fijo"
+    # Cada buzon acota a SU dominio, no a uno fijo: se comprueba con uno inventado para que el
+    # test siga valiendo el dia que haya un segundo buzon de verdad.
+    monkeypatch.setitem(google.CUENTAS, "otra", "alguien@otracasa.com")
+    otros = urllib.parse.parse_qs(
+        urllib.parse.urlparse(google.enlace_para_autorizar("otra")).query)
+    assert otros["hd"] == ["otracasa.com"]
 
 
 def test_el_dominio_sale_de_la_cuenta_y_no_esta_escrito_a_mano():
@@ -274,7 +303,7 @@ def test_dos_autorizaciones_al_mismo_buzon_no_duplican_el_correo(monkeypatch):
     assert len(leidos) == 1, f"el mismo buzon se ha leido {len(leidos)} veces"
     assert len(datos["correos"]) == 1, "el correo sale duplicado"
     assert not fallos
-    assert datos["buzones"][0]["alias_de"] == ["gutlyn"], "se dice que gutlyn es el alias"
+    assert "gutlyn" in datos["buzones"][0]["alias_de"], "se dice que gutlyn es un alias"
 
 
 def test_dos_buzones_de_verdad_se_siguen_leyendo_los_dos(monkeypatch):
@@ -318,3 +347,20 @@ def test_el_enlace_de_gmail_no_mete_el_correo_en_el_tramo_de_la_cuenta():
     assert "/mail/u/ghidalgo" not in enlace, "el correo no puede ir en el tramo /u/"
     assert "authuser=" in enlace, "sin authuser abre en la sesion que haya delante, que es otra"
     assert enlace.endswith("#inbox/abc123")
+
+
+def test_una_tercera_direccion_no_cae_en_la_consultoria_por_descarte():
+    """MEDIDO sobre 30 dias del buzon real: 2 de 14 correos llegan a `ghidalgo@zb-zondra.com`.
+    Zondra se retiro como marca, pero la direccion sigue recibiendo. Mientras no estaba declarada
+    caian en Zenvrax, o sea la consultoria salia con correo que no es suyo, y el operador pregunto
+    justamente eso: cuales son de GutLyn y cuales de la consultoria."""
+    negocios = ["zenvrax", "gutlyn", "zondra"]
+    assert personal._de_quien_es("ghidalgo@zb-zondra.com", negocios) == "zondra"
+    assert personal._de_quien_es("ghidalgo@gutlyn.com", negocios) == "gutlyn"
+    assert personal._de_quien_es("support@zenvrax.com", negocios) == "zenvrax"
+
+
+def test_la_agenda_no_mira_solo_tres_dias():
+    """La pantalla decia "nada en los proximos dias" teniendo una cita dentro del mes. Con una
+    agenda poco cargada, tres dias enseñan vacio casi siempre y el apartado parece roto."""
+    assert personal.DIAS_DE_AGENDA >= 14

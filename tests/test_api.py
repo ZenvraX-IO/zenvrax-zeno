@@ -107,7 +107,8 @@ def test_ningun_endpoint_llama_al_catalogo_ni_dispara_una_accion():
     # nueva de `google` tiene que pasar por aquí antes de ser alcanzable desde la web.
     de_google = {c for c in llamadas if c.startswith("google.")}
     assert de_google <= {"google.conectadas", "google._cliente", "google.enlace_para_autorizar",
-                         "google.guarda_permiso", "google.olvida", "google.CUENTAS.items"}, (
+                         "google.guarda_permiso", "google.olvida", "google.CUENTAS.items",
+                         "google.CUENTAS.get", "google.ALIAS.items"}, (
         f"api.py expone de google algo no previsto: {de_google}")
 
 
@@ -375,8 +376,10 @@ def test_las_cuentas_dicen_si_les_falta_el_cliente(monkeypatch):
     monkeypatch.setattr(api_mod.google, "conectadas", lambda: {})
     monkeypatch.setattr(api_mod.google, "_cliente", lambda n: ("", ""))
     d = cliente.get("/api/google/cuentas", headers=CABECERA).json()
-    assert len(d["cuentas"]) == 2
+    assert d["cuentas"], "tiene que salir al menos el buzon del operador"
     assert all(c["configurada"] is False and c["conectada"] is False for c in d["cuentas"])
+    # Y los alias NO salen entre lo conectable: un alias no se autoriza, su buzon ya lo esta.
+    assert not [c for c in d["cuentas"] if c["negocio"] in api_mod.google.ALIAS]
 
 
 def test_conectar_una_cuenta_que_no_existe_da_404():
@@ -384,13 +387,21 @@ def test_conectar_una_cuenta_que_no_existe_da_404():
                         headers=CABECERA).status_code == 404
 
 
+def test_un_alias_no_se_puede_conectar_ni_forzandolo():
+    """La pantalla ya no ofrece el boton, pero la puerta tambien se cierra por detras: pedir
+    permiso para un alias abriria una autorizacion al MISMO buzon y volveria el duplicado."""
+    assert "gutlyn" in api_mod.google.ALIAS
+    assert cliente.post("/api/google/conectar?negocio=gutlyn",
+                        headers=CABECERA).status_code == 404
+
+
 def test_el_enlace_de_conectar_lleva_el_vale(monkeypatch):
     monkeypatch.setattr(api_mod.google, "enlace_para_autorizar",
                         lambda n, estado="": "https://g/?x=1&state=" + estado)
-    d = cliente.post("/api/google/conectar?negocio=gutlyn", headers=CABECERA).json()
+    d = cliente.post("/api/google/conectar?negocio=zenvrax", headers=CABECERA).json()
     assert d["enlace"].count("state=") == 1, "dos veces state y Google bloquea el acceso"
     vale = d["enlace"].split("state=")[1]
-    assert api_mod._VALES[vale][0] == "gutlyn", "el vale tiene que recordar de qué cuenta era"
+    assert api_mod._VALES[vale][0] == "zenvrax", "el vale tiene que recordar de qué buzón era"
 
 
 def test_lo_personal_necesita_sesion(monkeypatch):

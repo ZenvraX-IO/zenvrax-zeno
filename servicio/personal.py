@@ -69,7 +69,7 @@ def _de_quien_es(destinos: str, negocios: list[str]) -> str:
     """
     bajo = destinos.lower()
     for negocio in negocios[1:]:
-        dominio = google.CUENTAS.get(negocio, "").rsplit("@", 1)[-1].lower()
+        dominio = google.direcciones().get(negocio, "").rsplit("@", 1)[-1].lower()
         if dominio and "@" + dominio in bajo:
             return negocio
     return negocios[0]
@@ -107,7 +107,13 @@ def correos(negocio: str, cuantos: int = 12, dias: int = 7,
     return fuera
 
 
-def agenda(negocio: str, dias: int = 3, buzon: str = "") -> list[dict]:
+#: Cuanto se mira hacia delante en la agenda. Empezo en 3 dias y la pantalla decia "nada en los
+#: proximos dias" teniendo una cita a la vuelta: con una agenda poco cargada, tres dias enseñan
+#: vacio casi siempre y el apartado parece roto.
+DIAS_DE_AGENDA = 14
+
+
+def agenda(negocio: str, dias: int = DIAS_DE_AGENDA, buzon: str = "") -> list[dict]:
     """Las citas de los proximos dias de un buzon."""
     buzon = buzon or google.CUENTAS.get(negocio, "")
     ahora = datetime.now(timezone.utc)
@@ -167,6 +173,9 @@ def bandeja() -> tuple[dict, list[str]]:
     for buzon, negocios in _por_buzon(conectadas).items():
         # El primero manda: es con cuyo permiso se lee y el negocio por defecto de lo que llegue.
         principal = negocios[0]
+        # Los alias declarados viajan con el buzon: son los que dan nombre al negocio de cada
+        # correo, aunque no tengan autorizacion propia porque no la necesitan.
+        negocios = negocios + [n for n in google.ALIAS if n not in negocios]
         fuera["buzones"].append({"buzon": buzon, "negocios": negocios,
                                  "alias_de": negocios[1:]})
         try:

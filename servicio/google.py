@@ -49,12 +49,36 @@ CLAVE_COFRE = os.environ.get("ZENO_COFRE_KEY", "")
 COFRE = pathlib.Path(os.environ.get("ZENO_COFRE", "/datos/google.cofre"))
 VUELTA = os.environ.get("ZENO_URL_PUBLICA", "https://zeno.zenvrax.com") + "/api/google/vuelta"
 
-#: Las dos cuentas del operador, cada una con su negocio. Se declaran aqui y no se descubren: una
-#: cuenta que aparezca sola no deberia poder conectarse.
+#: LOS BUZONES QUE SE CONECTAN. Uno por cada cuenta de Google de verdad. Se declaran aqui y no se
+#: descubren: un buzon que aparezca solo no deberia poder conectarse.
 CUENTAS = {
     "zenvrax": os.environ.get("ZENO_CORREO_ZENVRAX", "ghidalgo@zenvrax.com"),
-    "gutlyn": os.environ.get("ZENO_CORREO_GUTLYN", "ghidalgo@gutlyn.com"),
 }
+
+#: LAS DIRECCIONES QUE NO SON UN BUZON APARTE. Medido el 2026-09-27: `ghidalgo@gutlyn.com` es un
+#: ALIAS de `ghidalgo@zenvrax.com` dentro del mismo Workspace, no una cuenta distinta. Las dos
+#: autorizaciones devolvian el mismo buzon.
+#:
+#: Estan declaradas porque sirven para UNA cosa: etiquetar de que negocio es cada correo, segun la
+#: direccion a la que llego. Lo que NO hacen es pedir permiso, porque no hay nada que autorizar: el
+#: buzon ya esta conectado. El operador (2026-09-27): *"si hay mas cuentas son del mismo workspace,
+#: no tiene mucho sentido ponerla de GutLyn para conectar"*. Tenia razon: ese boton no podia hacer
+#: nada, y el aviso de "sin conectar" decia que faltaba correo cuando no faltaba ninguno.
+#:
+#: El dia que GutLyn tenga cuenta de Google propia, se mueve su linea de aqui a CUENTAS y vuelve a
+#: aparecer su boton. Por eso el codigo que lee sigue admitiendo varios buzones.
+ALIAS = {
+    "gutlyn": os.environ.get("ZENO_ALIAS_GUTLYN", "ghidalgo@gutlyn.com"),
+    # Zondra se retiro como marca el 22-sep, pero su direccion sigue recibiendo. Medido sobre 30
+    # dias del buzon real: 2 de 14 correos llegan ahi. Sin declararla caian en Zenvrax por
+    # descarte, o sea la consultoria salia con correo que no es suyo.
+    "zondra": os.environ.get("ZENO_ALIAS_ZONDRA", "ghidalgo@zb-zondra.com"),
+}
+
+
+def direcciones() -> dict:
+    """Todas las direcciones del operador, sean buzon o alias. Para etiquetar, no para conectar."""
+    return {**CUENTAS, **ALIAS}
 
 #: Tramo A y C: leer. Es con lo que se empieza y lo unico que se pide de serie.
 PERMISOS_LEER = [

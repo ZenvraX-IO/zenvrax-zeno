@@ -269,7 +269,13 @@ async def google_cuentas(authorization: str = Header(default="")):
                         # dejar que el operador pulse y se coma un error de Google.
                         "configurada": bool(ident),
                         "permisos": conectadas.get(negocio, {}).get("permisos", [])})
-    return {"cuentas": cuentas, "tramo": os.environ.get("ZENO_TRAMO", "leer")}
+    # Los alias van APARTE de las cuentas. Mezclarlos era lo que ponia un boton Conectar donde no
+    # hay nada que autorizar, y un aviso de "sin conectar" que decia que faltaba correo.
+    alias = [{"negocio": n, "cuenta": c,
+              "de": google.CUENTAS.get(next(iter(google.CUENTAS), ""), "")}
+             for n, c in google.ALIAS.items()]
+    return {"cuentas": cuentas, "alias": alias,
+            "tramo": os.environ.get("ZENO_TRAMO", "leer")}
 
 
 @app.post("/api/google/conectar")
