@@ -69,11 +69,11 @@ CUENTAS = {
 #: aparecer su boton. Por eso el codigo que lee sigue admitiendo varios buzones.
 ALIAS = {
     "gutlyn": os.environ.get("ZENO_ALIAS_GUTLYN", "ghidalgo@gutlyn.com"),
-    # Zondra se retiro como marca el 22-sep, pero su direccion sigue recibiendo. Medido sobre 30
-    # dias del buzon real: 2 de 14 correos llegan ahi. Sin declararla caian en Zenvrax por
-    # descarte, o sea la consultoria salia con correo que no es suyo.
-    "zondra": os.environ.get("ZENO_ALIAS_ZONDRA", "ghidalgo@zb-zondra.com"),
 }
+#: ZONDRA NO ESTA, y es deliberado. Su direccion sigue recibiendo correo (2 de 14 en 30 dias), y al
+#: verlo la añadi como tercer negocio por mi cuenta. El operador (2026-09-27): *"es solo Zenvrax y
+#: Gutlyn, Zondra esta obsoleto"*. Una marca retirada no vuelve a existir porque le llegue correo:
+#: eso lo decide el negocio, no la bandeja. Ese correo cae en Zenvrax, que es el dueño del buzon.
 
 
 def direcciones() -> dict:

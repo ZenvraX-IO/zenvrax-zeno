@@ -132,6 +132,10 @@
   .punto.alias{background:none;border:1px solid var(--linea)}
   .apartado{font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:var(--gris);
             margin:20px 0 10px;display:flex;align-items:center;gap:10px}
+  /* La cuenta conectada es un pie discreto: importa el primer dia y despues estorba. */
+  .pie-cuentas{margin:26px 0 4px;color:#6f6f78;font-size:11.5px;text-align:center}
+  .quitar-cuenta{background:none;border:0;color:#6f6f78;font-size:11.5px;text-decoration:underline;
+                 padding:6px;cursor:pointer}
   /* El filtro por negocio: el operador pregunto "cuales vienen de GutLyn y cuales de la
      consultoria". La etiqueta de cada correo ya lo decia, pero obligaba a leerlos uno a uno. */
   .filtros{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 12px}
@@ -621,26 +625,34 @@ async function conectaCuenta(negocio, boton) {
 }
 
 function pintaCuentas(cuentas, alias) {
+  // CUANDO TODO ESTA CONECTADO, ESTO NO OCUPA SITIO. Antes eran tres filas grandes en lo alto de la
+  // pantalla, y decian algo que solo importa el primer dia; los alias ademas parecian cuentas. El
+  // operador (2026-09-27): *"¿por que colocar las cuentas si solo se conecta una?"*.
+  //
+  // Lo que queda es una linea discreta al final, con el correo y como quitarlo. Si algo falta, en
+  // cambio, vuelve la tarjeta entera: eso si hay que verlo.
+  const falta = cuentas.filter(c => !c.conectada);
+  if (!falta.length) return "";
+
   let h = "";
-  for (const c of cuentas) {
-    const estado = c.conectada ? "solo lectura"
-                 : c.configurada ? "sin conectar" : "falta configurarla";
-    h += '<div class="cuenta"><span class="punto' + (c.conectada ? " si" : "") + '"></span>' +
-         '<div class="c"><b>' + esc(c.cuenta) + "</b><span>" + esc(estado) + "</span></div>";
-    if (!c.conectada && c.configurada)
+  for (const c of falta) {
+    h += '<div class="cuenta"><span class="punto"></span>' +
+         '<div class="c"><b>' + esc(c.cuenta) + "</b><span>" +
+         (c.configurada ? "sin conectar" : "falta configurarla") + "</span></div>";
+    if (c.configurada)
       h += '<button class="b primaria" data-conectar="' + esc(c.negocio) + '">Conectar</button>';
-    else if (c.conectada)
-      h += '<button class="b sin" data-olvidar="' + esc(c.negocio) + '">Quitar</button>';
     h += "</div>";
   }
-  // Un ALIAS no se conecta: su buzon ya esta autorizado. Se enseña para que se vea que Zeno sabe
-  // distinguir sus correos, pero sin boton y sin punto de estado, porque no hay nada que hacer con
-  // el. Antes salia como una cuenta mas, con un Conectar que no podia funcionar.
-  for (const a of alias || [])
-    h += '<div class="cuenta"><span class="punto alias"></span>' +
-         '<div class="c"><b>' + esc(a.cuenta) + "</b><span>alias de " + esc(a.de) +
-         ", se lee con esa</span></div></div>";
   return h;
+}
+
+function pintaPieDeCuentas(cuentas) {
+  const dentro = cuentas.filter(c => c.conectada);
+  if (!dentro.length) return "";
+  return '<div class="pie-cuentas">' +
+         dentro.map(c => esc(c.cuenta) + " · lectura y agenda " +
+                    '<button class="quitar-cuenta" data-olvidar="' + esc(c.negocio) +
+                    '">quitar</button>').join(" · ") + "</div>";
 }
 
 async function cargaPersonal() {
@@ -685,7 +697,7 @@ async function cargaPersonal() {
   html += '<div class="apartado">Sin leer · ' + correosEnPantalla.length + "</div>";
   html += '<div class="filtros" id="filtros"></div><div id="lista-correos"></div>';
 
-  c.innerHTML = html;
+  c.innerHTML = html + pintaPieDeCuentas(cuentas);
   enchufaBotonesDeCuenta(c);
   pintaCorreos();
   pintaAgendaExtra();

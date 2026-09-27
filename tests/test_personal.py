@@ -403,15 +403,20 @@ def test_el_enlace_de_gmail_no_mete_el_correo_en_el_tramo_de_la_cuenta():
     assert enlace.endswith("#inbox/abc123")
 
 
-def test_una_tercera_direccion_no_cae_en_la_consultoria_por_descarte():
-    """MEDIDO sobre 30 dias del buzon real: 2 de 14 correos llegan a `ghidalgo@zb-zondra.com`.
-    Zondra se retiro como marca, pero la direccion sigue recibiendo. Mientras no estaba declarada
-    caian en Zenvrax, o sea la consultoria salia con correo que no es suyo, y el operador pregunto
-    justamente eso: cuales son de GutLyn y cuales de la consultoria."""
-    negocios = ["zenvrax", "gutlyn", "zondra"]
-    assert personal._de_quien_es("ghidalgo@zb-zondra.com", negocios) == "zondra"
+def test_una_marca_retirada_no_vuelve_por_recibir_correo():
+    """La direccion de Zondra sigue recibiendo (2 de 14 correos en 30 dias) y al medirlo la añadi
+    como tercer negocio por mi cuenta. El operador: *"es solo Zenvrax y Gutlyn, Zondra esta
+    obsoleto"*.
+
+    La leccion es sobre quien decide: que exista un dato no significa que exista el negocio. Una
+    marca retirada no vuelve a la pantalla porque la bandeja la mencione.
+    """
+    assert "zondra" not in google.ALIAS
+    assert set(google.ALIAS) == {"gutlyn"}
+    negocios = ["zenvrax", "gutlyn"]
+    # Y su correo no se pierde: cae en el dueño del buzon, que es lo que es.
+    assert personal._de_quien_es("ghidalgo@zb-zondra.com", negocios) == "zenvrax"
     assert personal._de_quien_es("ghidalgo@gutlyn.com", negocios) == "gutlyn"
-    assert personal._de_quien_es("support@zenvrax.com", negocios) == "zenvrax"
 
 
 def test_la_agenda_no_mira_solo_tres_dias():
