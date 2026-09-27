@@ -34,7 +34,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ))
 
 import lector                                    # noqa: E402
-from servicio import chat as chat_mod, google, personal, sesion    # noqa: E402
+from servicio import chat as chat_mod, clave as clave_mod, google, personal, sesion  # noqa: E402
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -65,6 +65,33 @@ class Entrada(BaseModel):
 class Segundo(BaseModel):
     challenge: str
     code: str
+
+
+class Clave(BaseModel):
+    clave: str
+
+
+@app.post("/api/entrar")
+async def entrar_con_clave(body: Clave):
+    """La puerta de cada dia: UNA clave, sin segundo factor, y la sesion dura tres meses.
+
+    El operador (2026-09-27): *"no se queda registrada y es un lio"*. Entrar pedia la contraseña del
+    cockpit y encima el codigo del autenticador, varias veces al dia y desde el movil. El camino del
+    cockpit sigue existiendo abajo, intacto.
+    """
+    correo = sesion.USUARIOS[0] if sesion.USUARIOS else ""
+    try:
+        return clave_mod.entrar(body.clave, correo)
+    except clave_mod.ClaveNoConfigurada as e:
+        raise HTTPException(503, str(e)) from e
+    except clave_mod.ClaveMala as e:
+        raise HTTPException(401, str(e)) from e
+
+
+@app.get("/api/como_se_entra")
+async def como_se_entra():
+    """Que puerta enseñar en el login. Sin sesion: es lo primero que pregunta la pantalla."""
+    return {"clave_propia": bool(clave_mod.CLAVE_HASH)}
 
 
 @app.post("/api/login")

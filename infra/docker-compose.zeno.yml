@@ -49,6 +49,10 @@ services:
       # Con que se cifra el permiso en disco. Sin esta clave, Zeno no guarda nada y lo dice.
       ZENO_COFRE_KEY: ${ZENO_COFRE_KEY}
       ZENO_COFRE: /datos/google.cofre
+      # La clave propia de Zeno, como hash. Entrar pedia la contraseña del cockpit MAS el codigo de
+      # seis cifras, varias veces al dia desde el movil: una puerta que cuesta cruzar se deja de
+      # cruzar. La del cockpit sigue funcionando; esta se suma. Vacio = solo la del cockpit.
+      ZENO_CLAVE_HASH: ${ZENO_CLAVE_HASH:-}
       # Tiene que coincidir CARACTER A CARACTER con el URI de redireccion del cliente en Google.
       ZENO_URL_PUBLICA: ${ZENO_URL_PUBLICA:-https://zeno.zenvrax.com}
     volumes:

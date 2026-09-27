@@ -70,6 +70,7 @@ def test_no_hay_ningun_endpoint_que_ejecute_una_accion():
         "chat",              # gasta API, y nace apagado
         "google_conectar",   # devuelve la dirección de Google; no toca ni una cola
         "google_olvidar",    # retira un permiso de Google; solo quita, nunca ejecuta
+        "entrar_con_clave",  # cambia la clave propia por un token; no toca ninguna cola
         "login", "login_2fa", "salir",
     ]
     assert sorted(posts) == sorted(permitidos), (

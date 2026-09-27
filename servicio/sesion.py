@@ -31,6 +31,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from servicio import clave as clave_mod
+
 COCKPIT = os.environ.get("ZENO_COCKPIT_URL", "https://cockpit.zenvrax.com/api")
 
 #: Quien puede entrar en Zeno. El operador (2026-09-27): *"Zeno solo tendra un unico usuario que soy
@@ -106,9 +108,23 @@ def entrar_2fa(challenge: str, code: str) -> dict:
 
 
 def quien_es(token: str, ahora=None) -> Quien:
-    """Verifica el token contra el cockpit. Lanza NoAutenticado o CockpitNoResponde."""
+    """Quien trae ese token. Vale el del cockpit y vale el de la clave propia de Zeno.
+
+    Los tokens de Zeno se reconocen por su prefijo y se verifican AQUI, sin salir a la red: son
+    firmados, asi que no hace falta preguntar a nadie y la sesion sobrevive a que el cockpit este
+    caido. Los del cockpit siguen el camino de siempre.
+    """
     if not token:
         raise NoAutenticado("sin token")
+    if clave_mod.es_de_zeno(token):
+        try:
+            correo = clave_mod.lee(token)
+        except (clave_mod.ClaveMala, clave_mod.ClaveNoConfigurada) as e:
+            raise NoAutenticado(str(e)) from e
+        # La misma guarda que abajo: un token de Zeno tampoco esquiva la lista de quien puede entrar.
+        if USUARIOS and correo.lower() not in USUARIOS:
+            raise NoAutenticado("esta cuenta no tiene acceso a Zeno")
+        return Quien(user_id="zeno", role="owner", email=correo)
     ahora = ahora if ahora is not None else time.monotonic()
     cacheado = _verificados.get(token)
     if cacheado and ahora - cacheado[0] < CACHE_SEGUNDOS:

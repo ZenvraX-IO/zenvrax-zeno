@@ -174,7 +174,17 @@
   <div class="marca"><i></i><s></s><u></u></div>
   <h1>Zeno</h1>
   <p>Lo que espera tu OK, de los dos negocios</p>
-  <div id="paso1">
+  <!-- LA PUERTA DE CADA DIA: una sola clave, sin codigo de seis cifras, y la sesion dura tres meses.
+       La del cockpit sigue debajo, escondida tras el enlace, porque esta clave se suma y no
+       sustituye: si algun dia se quita la variable, aquello sigue funcionando. -->
+  <div id="paso0">
+    <input id="clave" class="campo" type="password" placeholder="clave de Zeno"
+           autocomplete="current-password" enterkeyhint="go">
+    <button id="btn-clave" class="b primaria grande">Entrar</button>
+    <p style="margin:16px 0 0"><a href="#" id="ver-cockpit"
+       style="color:var(--gris);font-size:12.5px">entrar con la cuenta del cockpit</a></p>
+  </div>
+  <div id="paso1" hidden>
     <input id="email" class="campo" type="email" placeholder="correo" autocomplete="username">
     <input id="pass" class="campo" type="password" placeholder="contraseña"
            autocomplete="current-password">
@@ -258,6 +268,43 @@ const esc = (t) => String(t ?? "").replace(/[&<>"]/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // ---------------------------------------------------------------- entrar
+//
+// Dos puertas. La de cada dia es UNA clave; la del cockpit se queda por debajo para el dia que la
+// clave propia no este puesta o haya que quitarla.
+
+async function entrarConClave() {
+  $("#error-login").textContent = "";
+  const c = $("#clave").value;
+  if (!c) return;
+  const b = $("#btn-clave");
+  b.disabled = true; b.textContent = "comprobando…";
+  try {
+    const r = await api("/api/entrar", { method: "POST", body: JSON.stringify({ clave: c }) });
+    $("#clave").value = "";
+    dentro(r.token);
+  } catch (e) {
+    $("#error-login").textContent = e.message;
+  } finally {
+    b.disabled = false; b.textContent = "Entrar";
+  }
+}
+
+function puertaDelCockpit() {
+  $("#paso0").hidden = true;
+  $("#paso1").hidden = false;
+  $("#error-login").textContent = "";
+  $("#email").focus();
+}
+
+// Si no hay clave propia puesta en el servidor, se ensena directamente la del cockpit: una casilla
+// que no puede funcionar es peor que no ensenarla.
+(async () => {
+  try {
+    const d = await (await fetch("/api/como_se_entra")).json();
+    if (!d.clave_propia) puertaDelCockpit();
+  } catch { puertaDelCockpit(); }
+})();
+
 async function entrar() {
   $("#error-login").textContent = "";
   try {
@@ -289,7 +336,8 @@ function salir() {
                                    headers: { Authorization: "Bearer " + token } }).catch(() => {});
   token = ""; guarda.tirar();
   $("#app").hidden = true; $("#pantalla-login").hidden = false;
-  $("#paso1").hidden = false; $("#paso2").hidden = true; $("#pass").value = "";
+  $("#paso0").hidden = false; $("#paso1").hidden = true; $("#paso2").hidden = true;
+  $("#pass").value = ""; $("#clave").value = "";
 }
 
 // ---------------------------------------------------------------- lo que espera tu OK
@@ -628,6 +676,9 @@ zona.addEventListener("touchend", async () => {
   try { await recargaVista(); } finally { alturaTiron(0, "", ""); }
 });
 
+$("#btn-clave").onclick = entrarConClave;
+$("#clave").onkeydown = (e) => { if (e.key === "Enter") entrarConClave(); };
+$("#ver-cockpit").onclick = (e) => { e.preventDefault(); puertaDelCockpit(); };
 $("#btn-entrar").onclick = entrar;
 $("#btn-codigo").onclick = comprobarCodigo;
 $("#btn-salir").onclick = salir;
