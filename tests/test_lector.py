@@ -265,7 +265,10 @@ def test_la_etiqueta_se_limpia_DESPUES_de_buscar_el_contrato(monkeypatch):
 
     acciones = lector._acciones(
         "cockpit", [{"label": "✅ Aprobar y publicar", "url": "https://x/1"}], Indice())
-    assert buscadas == [("cockpit", "✅ Aprobar y publicar")], "se busco con la limpia"
+    assert buscadas, "no se busco el contrato"
+    for clave in buscadas:
+        assert clave[1] == "✅ Aprobar y publicar", f"se busco con la limpia: {clave}"
+
     assert acciones[0].etiqueta == "Aprobar y publicar", "y se enseña sin el emoji"
     assert acciones[0].op == "claire.aprobar", "con su contrato intacto"
 
@@ -504,3 +507,25 @@ def test_el_front_no_pinta_lo_que_zeno_no_puede_disparar():
     h = (lector.Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8") \
         if hasattr(lector, "Path") else (RAIZ / "web" / "index.html").read_text(encoding="utf-8")
     assert "a.se_puede_ejecutar !== false" in h
+
+
+def test_dos_acciones_que_se_llaman_igual_no_se_cruzan():
+    """EL FALLO (28-sep). El catalogo se indexaba SOLO por (sistema, etiqueta), y hay CINCO pares
+    de acciones que se llaman igual. Con la clave corta se cruzaba con la primera que cayera, o
+    sea un boton podia ejecutarse anunciando el contrato de OTRO, y el contrato es lo que dice si
+    algo publica o si se deshace.
+
+    Se vio en carne propia: al ponerle el mismo nombre a los dos botones de cerrar una respuesta,
+    el que escondia el aviso paso a anunciarse como el que avanza el arco.
+    """
+    indice = lector._indice_del_catalogo()
+    # Los dos "Ya le he contestado" tienen rutas distintas y contratos distintos.
+    a = lector._acciones("cockpit", [{"label": "✓ Ya le he contestado",
+                                      "patch": {"path": "/notifications/dismiss",
+                                                "body": {"item_id": "reply:x"}}}], indice)
+    b = lector._acciones("cockpit", [{"label": "✓ Ya le he contestado",
+                                      "patch": {"path": "/marketing/linkedin/abc/arc",
+                                                "body": {"arc_stage": 2}}}], indice)
+    assert a[0].op and b[0].op, "alguna se quedo sin contrato"
+    assert a[0].op != b[0].op, (
+        f"las dos se cruzan con el mismo contrato ({a[0].op}): la ruta no desambigua")

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -157,15 +158,40 @@ def sin_adornos(t: str) -> str:
     return t.strip(" ,-")
 
 
-def _indice_del_catalogo() -> dict:
-    """Las acciones del catalogo indexadas por (sistema, etiqueta), que es lo que trae un aviso.
+def _huella_destino(destino: str) -> str:
+    """El destino sin los huecos, para poder comparar la ruta de un aviso con la del catalogo.
 
-    La cola manda la etiqueta que ve el operador, no el `op`: es lo unico comun entre lo que viaja en
-    el aviso y lo que declara el catalogo.
+    El catalogo guarda la plantilla (`/marketing/topics/{pid}`) y el aviso trae el identificador
+    ya puesto (`/marketing/topics/a7ea...`). Se quedan los tramos FIJOS, que son los que
+    identifican la accion.
+    """
+    trozos = []
+    for x in re.split(r"[/?&=]", (destino or "").strip()):
+        x = x.strip()
+        if not x or x.startswith("{") or re.fullmatch(r"[0-9a-fA-F-]{8,}", x):
+            continue
+        trozos.append(x.lower())
+    return "/".join(trozos)
+
+
+def _indice_del_catalogo() -> dict:
+    """Las acciones del catalogo, indexadas por (sistema, etiqueta) Y por (sistema, etiqueta, ruta).
+
+    POR QUE LAS DOS CLAVES. Durante meses se indexo SOLO por (sistema, etiqueta), y eso basta
+    mientras dos acciones no se llamen igual. Medido el 28-sep: hay CINCO pares que si
+    ("Marcar publicado", "Ver preview", "Aprobar y publicar", "Regenerar", "Ya le he
+    contestado"), y con la clave corta se cruzaba con el primero que cayera. O sea un boton podia
+    ejecutarse con el contrato de otro, y el contrato es lo que dice si algo publica o si se
+    deshace.
+
+    Se probo en carne propia: al ponerle el mismo nombre a los dos botones de cerrar una
+    respuesta, el que escondia el aviso paso a anunciarse como el que avanza el arco.
     """
     fuera = {}
     for a in C.catalogo():
-        fuera[(a.sistema, (a.etiqueta or "").strip())] = a
+        etiqueta = (a.etiqueta or "").strip()
+        fuera[(a.sistema, etiqueta)] = a        # se conserva: la mayoria son unicas
+        fuera[(a.sistema, etiqueta, _huella_destino(a.destino))] = a
     return fuera
 
 
@@ -184,7 +210,11 @@ def _acciones(sistema: str, brutas: list, indice: dict) -> list:
         # El contrato se busca con la etiqueta CRUDA: es la clave del catalogo, que se recolecto
         # del codigo tal cual. Limpiarla antes rompe la busqueda y la accion se queda sin contrato,
         # o sea sin poder ejecutarse. Se limpia DESPUES, solo para enseñarla.
-        ficha = indice.get((sistema, etiqueta))
+        # Primero con la RUTA, que desambigua cuando dos acciones se llaman igual; si no cuadra,
+        # se cae a la etiqueta sola, que es como funcionaba antes y cubre a la mayoria.
+        destino = (a.get("url") or (a.get("patch") or a.get("call") or {}).get("path") or "")
+        ficha = (indice.get((sistema, etiqueta, _huella_destino(destino)))
+                 or indice.get((sistema, etiqueta)))
         efecto = ficha.efecto if ficha else None
         # Lo que solo ABRE una pantalla lleva ruta relativa del cockpit ("/marketing/x?open=...").
         # Sin prefijar, el navegador la resuelve contra zeno.zenvrax.com y da un 404: el boton
