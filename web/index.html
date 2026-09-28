@@ -677,14 +677,16 @@ async function abreCola(cola, titulo) {
     if (r.cupo)
       h += '<div class="extracto" style="margin-bottom:12px">' +
            (r.quedan_hoy > 0
-             ? "Quedan " + r.quedan_hoy + " invitaciones de las " + r.cupo + " de hoy."
-             : "Las " + r.cupo + " invitaciones de hoy ya están hechas, por eso no salen notas " +
-               "nuevas. Mañana vuelven.") +
+             ? "Quedan " + r.quedan_hoy + " invitaciones de las " + r.cupo + " de hoy. " +
+               "Las de más abajo van marcadas."
+             : "Las " + r.cupo + " invitaciones de hoy ya están hechas. Las notas siguen abajo " +
+               "marcadas, por si quieres adelantar alguna.") +
            (r.por_conectar ? " Esperando en la cola: " + r.por_conectar + "." : "") + "</div>";
     if (!colaEnPantalla.length) h += '<div class="vacio">Nada aquí. Cola vacía.</div>';
     colaEnPantalla.forEach((e, i) => {
       h += '<div class="tarjeta"><div class="neg">' + esc(e.negocio) +
            (e.paso ? ' <span style="color:var(--ambar)">' + esc(e.paso) + "</span>" : "") +
+           (e.fuera_de_cupo ? ' <span class="marca-accion m-mundo">pasa del cupo de hoy</span>' : "") +
            (e.cuando ? ' <span style="color:var(--apagado)">' + esc(desdeCuando(e.cuando)) + "</span>" : "") +
            "</div><div class=\"post\">" + esc(e.titulo) + "</div>" +
            (e.cuerpo ? '<div class="extracto">' + esc(e.cuerpo) + "</div>" : "") +

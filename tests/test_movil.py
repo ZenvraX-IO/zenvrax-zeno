@@ -228,3 +228,12 @@ def test_se_dice_por_que_la_lista_es_la_que_es():
     h = _html()
     assert "d.resumen" in h
     assert "ya están hechas" in h and "quedan_hoy" in h
+
+
+def test_lo_que_se_pasa_del_cupo_se_ve_marcado():
+    """La lista ya no se calla cuando el cupo del dia esta hecho: sale todo y lo que se pasaria
+    va marcado. Sin la marca, enseñarlo SI seria una invitacion a saltarse la cuota de LinkedIn,
+    que no es un numero decorativo."""
+    h = _html()
+    assert "e.fuera_de_cupo" in h, "no se marca lo que se pasa del cupo"
+    assert "pasa del cupo de hoy" in h

@@ -421,6 +421,9 @@ def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str, dic
             # QUE es esto: una nota de conexion, el M2 de un arco, una respuesta. Sin saberlo, el
             # texto de al lado no se puede pegar en ningun sitio con criterio.
             "paso": (e.get("etiqueta_paso") or "").strip(),
+            # Si mandarlo hoy se pasaria del cupo de LinkedIn. Se enseña igual: esconderlo no
+            # impide que nadie lo haga, y lo que impide decidir es no verlo.
+            "fuera_de_cupo": bool(e.get("fuera_de_cupo")),
             "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
                           "coste_api": a.coste_api, "url": a.url,
                           "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible,
