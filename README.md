@@ -1,8 +1,32 @@
-# Zeno — el asistente (J1 y J2)
+# Zeno — el asistente
 
-**STATUS:** `experiment`
-**Abierto:** 2026-09-27 · **Fases cerradas:** J1 (catálogo) y J2 (Zeno leyendo) del
-[plan del asistente](../../docs/PLAN-ASISTENTE.md)
+**STATUS:** `validating` (en uso diario del operador desde el 2026-09-28)
+**Abierto:** 2026-09-27 · **En producción:** [zeno.zenvrax.com](https://zeno.zenvrax.com)
+**Plan:** [plan del asistente](../../docs/PLAN-ASISTENTE.md)
+
+## Qué sabe hacer hoy, medido contra producción el 2026-09-28
+
+| | estado |
+|---|---|
+| Leer las dos colas y el estado de los dos negocios | sí, con clave de solo lectura |
+| Cerrar tareas del cockpit | sí, con clave de escritura propia y recorte a `status` |
+| Ejecutar las acciones del catálogo | sí, con contrato, vale de un solo uso, PIN y diario |
+| Agenda | ver huecos y choques, crear, mover y cancelar citas |
+| Correo de las dos cuentas | leer y dejar borradores. **Nunca envía** |
+| Preguntarle cosas | sí, con Haiku, tope de 60 al día y el coste debajo de cada respuesta |
+| Resumen de la mañana | sí, una vez al día, cacheado |
+| Avisos al móvil | sí, Web Push, cinco al día como mucho |
+| Dictar en buscar y en preguntar | sí, con el motor del navegador. Coste cero |
+| Conversar por voz | sí, y ejecutar hablando **solo lo reversible** |
+| Entrar con Face ID | sí, WebAuthn con la firma comprobada en el servidor |
+
+**Lo que NO hace, y es a propósito:** enviar correo, publicar por voz, y decidir con un modelo qué
+acción disparar (eso lo empareja `servicio/ordenes.py` con reglas).
+
+**La brecha conocida:** 113 cosas esperan el OK del operador y Zeno pone delante una. No es de
+Zeno: los feeds de aviso de los dos sistemas están hechos para dar una cosa al día (el de Xrise
+hace `LIMIT 1`) y el endpoint de colas devuelve el recuento, no los elementos. Cerrarlo es tocar
+cockpit y Xrise.
 
 **Zeno** es el nombre que eligió el operador el 2026-09-27 entre cuatro. Sale de Zenvrax y se queda
 en dos sílabas: la Z ata con la casa sin meterse en la línea X de los SaaS vendibles (Xrise, XSupport,

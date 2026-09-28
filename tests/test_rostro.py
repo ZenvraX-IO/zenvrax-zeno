@@ -259,3 +259,29 @@ def test_abrir_con_la_sesion_guardada_pasa_por_el_mismo_sitio():
     ofrecer el Face ID) no pasa justo en el caso mas frecuente. Paso: la tarjeta no salia nunca."""
     h = _html()
     assert "if (token) dentro(token);" in h, "el arranque no pasa por dentro()"
+
+
+def test_se_puede_dar_de_baja_desde_la_aplicacion():
+    """EL HUECO QUE QUEDABA. El endpoint de olvidar existia desde el primer dia y NO habia ningun
+    boton que lo llamara: si se perdia el telefono, la puerta solo se cerraba entrando en el
+    servidor. Una llave que se da de alta y no de baja es una llave que no se puede cambiar."""
+    h = _html()
+    assert '/api/rostro/olvidar' in h, "no hay forma de dar de baja el Face ID desde el móvil"
+    assert 'id="cara-off"' in h
+    # Y se pregunta antes: dejar la clave como unica puerta se hace a proposito, no rozando un boton.
+    trozo = h[h.index('const off = fila.querySelector("#cara-off")'):]
+    trozo = trozo[:trozo.index("};")]
+    assert "confirm(" in trozo, "da de baja todos los teléfonos sin preguntar"
+
+
+def test_los_avisos_se_pueden_quitar_desde_la_aplicacion():
+    """Mismo hueco, mismo endpoint sin boton. Unos avisos que se activan y no se apagan acaban
+    silenciados en los ajustes del sistema, y entonces no vuelven a sonar nunca."""
+    h = _html()
+    assert 'id="avisos-off"' in h
+    assert '/api/avisos/quitar' in h
+    trozo = h[h.index('const off = $("#avisos-off")'):]
+    trozo = trozo[:trozo.index("pintaAvisos();")]
+    # Se quita en los dos sitios: servidor y navegador.
+    assert "sus.unsubscribe()" in trozo, "el navegador se queda suscrito a algo que ya no existe"
+    assert "sus.toJSON()" in trozo, "manda medio objeto: el servidor exige tambien las claves"

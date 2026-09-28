@@ -1006,7 +1006,11 @@ async function pintaAvisos() {
     texto = "los has bloqueado en los ajustes del navegador";
   } else if (e.suscritos > 0) {
     texto = "activos en " + e.suscritos + (e.suscritos === 1 ? " sitio" : " sitios");
-    boton = '<button class="b sin" id="avisos-probar">Probar</button>';
+    // QUITAR tiene que estar. El endpoint existia desde el primer dia y no habia forma de
+    // llamarlo desde el movil: unos avisos que se activan y no se apagan acaban silenciados en
+    // los ajustes del sistema, y entonces no vuelven a sonar nunca, ni los que importan.
+    boton = '<button class="b sin" id="avisos-probar">Probar</button>' +
+            '<button class="b sin" id="avisos-off">Quitar</button>';
   } else {
     texto = "solo lo urgente y lo que empeora, cinco al día como mucho";
     boton = '<button class="b primaria" id="avisos-on">Activar</button>';
@@ -1023,6 +1027,63 @@ async function pintaAvisos() {
       const r = await api("/api/avisos/probar", { method: "POST" });
       probar.textContent = r.enviados ? "enviado" : "no ha salido";
     } catch (err) { probar.textContent = "falló"; }
+  };
+  const off = $("#avisos-off");
+  if (off) off.onclick = async () => {
+    off.disabled = true; off.textContent = "quitando…";
+    try {
+      // Se quita en los DOS sitios: en el servidor, para que deje de mandarlos, y la suscripcion
+      // del navegador. Solo lo primero deja al navegador suscrito a algo que ya no existe.
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sus = reg && await reg.pushManager.getSubscription();
+      if (sus) {
+        await api("/api/avisos/quitar", { method: "POST",
+                                          body: JSON.stringify(sus.toJSON()) });
+        await sus.unsubscribe();
+      }
+      pintaAvisos();
+    } catch (err) { off.disabled = false; off.textContent = "no he podido"; }
+  };
+  pintaLaCara();
+}
+
+// El Face ID dado de alta, con su baja. UNA credencial que se puede dar de alta y no de baja es
+// una llave que no se puede cambiar: si se pierde el telefono, esto es lo unico que cierra la
+// puerta sin tener que entrar en el servidor.
+async function pintaLaCara() {
+  const caja = $("#caja-avisos");
+  if (!caja || !hayCara) return;
+  let e;
+  try { e = await api("/api/rostro"); } catch { return; }
+  const fila = document.createElement("div");
+  fila.className = "avisos";
+  fila.style.marginTop = "10px";
+  fila.innerHTML = "<div class=\"c\"><b>Entrar con Face ID</b><span>" +
+    (e.hay ? "activo en " + e.cuantos + (e.cuantos === 1 ? " teléfono" : " teléfonos")
+           : "sin activar: entras con la clave") + "</span></div>" +
+    (e.hay ? '<button class="b sin" id="cara-off">Dar de baja</button>'
+           : '<button class="b primaria" id="cara-on">Activar</button>');
+  caja.appendChild(fila);
+  const on = fila.querySelector("#cara-on");
+  if (on) on.onclick = async () => {
+    on.disabled = true; on.textContent = "mira el teléfono…";
+    try {
+      const r = await darDeAltaLaCara();
+      if (!r) { on.disabled = false; on.textContent = "Activar"; return; }
+      pintaAvisos();
+    } catch (err) { on.disabled = false; on.textContent = "no he podido"; }
+  };
+  const off = fila.querySelector("#cara-off");
+  if (off) off.onclick = async () => {
+    // Se pregunta: dar de baja TODOS los telefonos deja la clave como unica puerta, y eso se hace
+    // a proposito (se ha perdido el movil), nunca por rozar un boton.
+    if (!confirm("¿Quitar el Face ID de todos los teléfonos? Seguirás entrando con la clave.")) return;
+    off.disabled = true; off.textContent = "quitando…";
+    try {
+      await api("/api/rostro/olvidar", { method: "POST", body: JSON.stringify({ respuesta: {} }) });
+      try { localStorage.removeItem("zeno.cara.no"); } catch {}
+      pintaAvisos();
+    } catch (err) { off.disabled = false; off.textContent = "no he podido"; }
   };
 }
 
