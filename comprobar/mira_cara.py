@@ -36,8 +36,10 @@ async def main():
         nav = await p.chromium.launch()
         ctx = await nav.new_context(viewport={"width": 390, "height": 844},
                                     device_scale_factor=2, has_touch=True, is_mobile=True)
-        await ctx.add_init_script(
-            f'try {{ localStorage.setItem("zeno.token", {CLAVE_O_TOKEN!r}); }} catch (e) {{}}')
+        # El token se pone UNA vez y a mano, no con un init script. Con init script se reinyecta
+        # en cada carga, asi que los pasos de abajo entraban por la sesion guardada y no por la
+        # cara: la prueba daba verde sin probar nada. Paso, y se vio porque el telefono AJENO
+        # tambien "entraba".
         pag = await ctx.new_page()
         fallos = []
         pag.on("pageerror", lambda e: fallos.append(f"pageerror: {e}"))
@@ -48,6 +50,9 @@ async def main():
         print("  telefono virtual conectado")
 
         await pag.goto("https://zeno.zenvrax.com/", wait_until="networkidle")
+        await pag.evaluate("t => { try { localStorage.setItem('zeno.token', t); } catch (e) {} }",
+                           CLAVE_O_TOKEN)
+        await pag.reload(wait_until="networkidle")
         await pag.wait_for_selector("#app:not([hidden])", timeout=25000)
 
         print()
