@@ -245,7 +245,8 @@ async def pendientes(authorization: str = Header(default="")):
             # la primera vez que lo uso.
             "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
                           "coste_api": a.coste_api, "url": a.url,
-                          "se_puede_abrir": a.se_puede_abrir}
+                          "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible,
+                          "metodo": a.metodo, "cuerpo": a.cuerpo}
                          for a in p.acciones],
         } for p in lista],
     }

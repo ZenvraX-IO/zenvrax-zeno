@@ -454,3 +454,31 @@ def test_lo_que_ya_es_absoluto_no_se_toca():
     brutas = [{"label": "✅ Aprobar", "url": "https://n8n.zenvrax.com/webhook/linkedin-approve?id=1"}]
     acc = lector._acciones("cockpit", brutas, indice)
     assert acc[0].url == "https://n8n.zenvrax.com/webhook/linkedin-approve?id=1"
+
+
+def test_lo_que_ejecuta_en_la_api_del_cockpit_lleva_direccion_entera():
+    """EL FALLO QUE DEJABA BOTONES MUERTOS. Las acciones que ejecutan no traen `url`: traen
+    `patch` con la ruta relativa, porque quien las dispara normalmente es el front del cockpit,
+    que ya sabe contra que API habla. Zeno no. Sin componerla, el ejecutor las rechazaba con
+    "esa direccion no es de ninguno de los sistemas de casa"."""
+    indice = lector._indice_del_catalogo()
+    brutas = [{"label": "✅ Marcar publicado",
+               "patch": {"path": "/marketing/topics/abc", "body": {"status": "published"}}}]
+    acc = lector._acciones("cockpit", brutas, indice)
+    assert acc[0].url.startswith("http"), acc[0].url
+    assert acc[0].url.endswith("/marketing/topics/abc")
+    assert acc[0].metodo == "PATCH", acc[0].metodo
+    assert acc[0].cuerpo == {"status": "published"}
+
+
+def test_el_verbo_por_omision_no_es_el_mismo_en_los_dos_sistemas():
+    """El cockpit usa PATCH y Xrise POST. Suponer uno para los dos ya costo un falso negativo al
+    recolectar el catalogo, y aqui costaria una llamada con el verbo equivocado."""
+    indice = lector._indice_del_catalogo()
+    brutas = [{"label": "✕ Cancelar", "patch": {"path": "/x/1", "body": {}}}]
+    assert lector._acciones("cockpit", brutas, indice)[0].metodo == "PATCH"
+    brutas = [{"label": "✕ Cancelar", "call": {"path": "/x/1", "body": {}}}]
+    assert lector._acciones("xrise", brutas, indice)[0].metodo == "POST"
+    # Y si el aviso trae verbo, manda el suyo.
+    brutas = [{"label": "✕ Cancelar", "patch": {"path": "/x/1", "verb": "POST", "body": {}}}]
+    assert lector._acciones("cockpit", brutas, indice)[0].metodo == "POST"

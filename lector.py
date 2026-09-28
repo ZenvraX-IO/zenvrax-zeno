@@ -77,6 +77,9 @@ class Accion:
     #: Si se puede deshacer. Viene del catalogo y sube hasta el front porque la VOZ lo necesita:
     #: por voz solo se ejecuta lo que se deshace, y eso no se puede decidir sin este dato.
     reversible: bool = False
+    #: Con que verbo y que cuerpo se dispara. Las acciones que solo abren no lo usan.
+    metodo: str = "GET"
+    cuerpo: dict | None = None
 
     @property
     def se_puede_abrir(self) -> bool:
@@ -185,8 +188,23 @@ def _acciones(sistema: str, brutas: list, indice: dict) -> list:
         # Sin prefijar, el navegador la resuelve contra zeno.zenvrax.com y da un 404: el boton
         # existe, se pulsa y no lleva a ningun sitio. Ya paso con el foco del dia.
         url = a.get("url") or ""
+        metodo, cuerpo = "GET", None
         if efecto == C.ABRE:
             url = enlaza(sistema, url)
+        elif not url:
+            # Las acciones que EJECUTAN algo en la API del cockpit no traen `url`: traen
+            # `patch`/`call` con la ruta relativa, el verbo y el cuerpo, porque quien las dispara
+            # normalmente es el front del cockpit, que ya sabe contra que API habla. Zeno no, asi
+            # que la direccion se compone aqui. Sin esto el ejecutor las rechazaba con "esa
+            # direccion no es de ninguno de los sistemas de casa" y eran botones muertos.
+            manda = a.get("patch") or a.get("call") or {}
+            if manda.get("path"):
+                base = COCKPIT if sistema == "cockpit" else XRISE
+                url = base.rstrip("/") + "/" + str(manda["path"]).lstrip("/")
+                # El verbo por omision NO es el mismo en las dos colas: el cockpit usa PATCH y
+                # Xrise POST. Suponer uno para las dos ya costo un falso negativo al recolectar.
+                metodo = (manda.get("verb") or ("PATCH" if sistema == "cockpit" else "POST")).upper()
+                cuerpo = manda.get("body") or {}
         fuera.append(Accion(
             etiqueta=sin_adornos(etiqueta) or etiqueta,
             op=ficha.op if ficha else None,
@@ -194,6 +212,8 @@ def _acciones(sistema: str, brutas: list, indice: dict) -> list:
             coste_api=bool(ficha and ficha.coste_api),
             url=url,
             reversible=bool(ficha and getattr(ficha, "reversible", False)),
+            metodo=metodo,
+            cuerpo=cuerpo,
         ))
     return fuera
 
@@ -381,7 +401,8 @@ def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str]:
             "cuando": e.get("cuando"),
             "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
                           "coste_api": a.coste_api, "url": a.url,
-                          "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible}
+                          "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible,
+                          "metodo": a.metodo, "cuerpo": a.cuerpo}
                          for a in acc],
         })
     return fuera, ""
