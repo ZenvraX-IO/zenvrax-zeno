@@ -380,7 +380,7 @@ def colas_que_se_abren() -> tuple[dict, list[str]]:
     return fuera, fallos
 
 
-def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str]:
+def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str, dict]:
     """Los ELEMENTOS de una cola del cockpit, con sus acciones ya cruzadas con el contrato.
 
     POR QUE EXISTE. `pendiente_completo` da el recuento, y con un numero no se decide nada: Zeno
@@ -398,7 +398,7 @@ def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str]:
     else:
         datos, err = _seguro(COCKPIT, f"/aios/cola/{cola}?limite={int(limite)}")
     if err:
-        return [], err
+        return [], err, {}
     # Un fallo parcial del otro lado (que no responda la base del organico, por ejemplo) viaja
     # tal cual: una lista corta sin aviso se lee como "no hay nada pendiente".
     for f in datos.get("fallos") or []:
@@ -418,6 +418,9 @@ def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str]:
             # habria que buscar el sitio a mano, que es la mitad del esfuerzo.
             "donde": (e.get("donde") or "").strip(),
             "copiar": (e.get("copiar") or "").strip(),
+            # QUE es esto: una nota de conexion, el M2 de un arco, una respuesta. Sin saberlo, el
+            # texto de al lado no se puede pegar en ningun sitio con criterio.
+            "paso": (e.get("etiqueta_paso") or "").strip(),
             "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
                           "coste_api": a.coste_api, "url": a.url,
                           "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible,
@@ -425,7 +428,7 @@ def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str]:
                           "se_puede_ejecutar": a.se_puede_ejecutar}
                          for a in acc],
         })
-    return fuera, ""
+    return fuera, "", datos.get("resumen") or {}
 
 
 def pendiente_completo() -> tuple[list[dict], list[str]]:

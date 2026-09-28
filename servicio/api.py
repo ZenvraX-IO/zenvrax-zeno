@@ -290,9 +290,9 @@ async def api_cola(cola: str, limite: int = Query(default=25, ge=1, le=100),
                    authorization: str = Header(default="")):
     """Una cola entera, para despacharla desde aqui en vez de abrir el cockpit."""
     _quien(authorization)
-    elementos, fallo = lector.elementos_de_cola(cola, limite)
+    elementos, fallo, resumen = lector.elementos_de_cola(cola, limite)
     return {"cola": cola, "cuantos": len(elementos), "elementos": elementos,
-            "fallos": [fallo] if fallo else []}
+            "resumen": resumen, "fallos": [fallo] if fallo else []}
 
 
 @app.get("/api/colas")

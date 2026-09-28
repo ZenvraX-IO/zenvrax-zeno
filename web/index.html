@@ -129,6 +129,11 @@
                  color:inherit;text-align:left;font:inherit;cursor:pointer}
   .ficha.abrible:active{background:#1a1a1f}
   .ficha .flecha{margin-left:auto;color:var(--apagado);font-size:18px}
+  /* El texto que hay que pegar, a la vista y distinto del resto: se lee antes de copiarlo, y si
+     el portapapeles falla sigue estando ahi para seleccionarlo a mano. */
+  .para-pegar{background:#0d0d10;border:1px solid var(--linea);border-left:3px solid var(--ambar);
+              border-radius:10px;padding:11px 12px;margin:8px 0 2px;font-size:14px;
+              line-height:1.5;white-space:pre-wrap}
   .ficha b{min-width:30px;text-align:right;font-variant-numeric:tabular-nums;font-size:16px}
 
   /* La caja de buscar, pensada para el pulgar y no para el raton:
@@ -666,12 +671,24 @@ async function abreCola(cola, titulo) {
     colaEnPantalla = d.elementos || [];
     let h = "";
     for (const f of d.fallos || []) h += '<div class="aviso-fallo">' + esc(f) + "</div>";
+    // POR QUE la lista es la que es. Sin esto, ver solo respuestas se lee como una averia cuando
+    // lo que pasa es que el cupo del dia ya esta gastado y no toca mandar mas invitaciones.
+    const r = d.resumen || {};
+    if (r.cupo)
+      h += '<div class="extracto" style="margin-bottom:12px">' +
+           (r.quedan_hoy > 0
+             ? "Quedan " + r.quedan_hoy + " invitaciones de las " + r.cupo + " de hoy."
+             : "Las " + r.cupo + " invitaciones de hoy ya están hechas, por eso no salen notas " +
+               "nuevas. Mañana vuelven.") +
+           (r.por_conectar ? " Esperando en la cola: " + r.por_conectar + "." : "") + "</div>";
     if (!colaEnPantalla.length) h += '<div class="vacio">Nada aquí. Cola vacía.</div>';
     colaEnPantalla.forEach((e, i) => {
       h += '<div class="tarjeta"><div class="neg">' + esc(e.negocio) +
+           (e.paso ? ' <span style="color:var(--ambar)">' + esc(e.paso) + "</span>" : "") +
            (e.cuando ? ' <span style="color:var(--apagado)">' + esc(desdeCuando(e.cuando)) + "</span>" : "") +
            "</div><div class=\"post\">" + esc(e.titulo) + "</div>" +
            (e.cuerpo ? '<div class="extracto">' + esc(e.cuerpo) + "</div>" : "") +
+           (e.copiar ? '<div class="para-pegar">' + esc(e.copiar) + "</div>" : "") +
            '<div class="btns">' +
            // El trio que cierra el circulo: IR al sitio, COPIAR el texto y MARCAR. Copiar va
            // antes que marcar a proposito: es el orden en que se hace.

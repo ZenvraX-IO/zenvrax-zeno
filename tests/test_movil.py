@@ -194,3 +194,37 @@ def test_las_colas_de_los_dos_negocios_se_pueden_abrir():
     h = _html()
     assert 'c.negocio !== "GutLyn+"' not in h, "se excluye a GutLyn a mano"
     assert "colasAbribles.xrise" in h, "no se miran las colas de GutLyn"
+
+
+# --------------------------------------------------------------------------------------------
+# EL FALLO (2026-09-28). El operador, mirando la cola de DMs: *"tan solo dan el link al perfil,
+# pero no dice si son notas, si es un arco M1 y cual es el texto a copiar. Eso es erroneo"*.
+#
+# Tenia razon y era mio: salian veinte tarjetas iguales, y el texto ni se enseñaba. Sin saber QUE
+# es una cosa, el mensaje de al lado no se puede pegar en ningun sitio con criterio: una nota de
+# conexion y el M3 de un arco van a sitios distintos de LinkedIn.
+# --------------------------------------------------------------------------------------------
+
+def test_cada_dm_dice_que_paso_es():
+    h = _html()
+    assert "e.paso" in h, "la tarjeta no dice de que paso es"
+    trozo = h[h.index("colaEnPantalla.forEach"):]
+    trozo = trozo[:trozo.index("$(\"#cola-cuerpo\").innerHTML")]
+    assert "var(--ambar)" in trozo, "el paso no destaca: hay que verlo antes que nada"
+
+
+def test_el_texto_a_pegar_se_enseña_y_no_solo_se_copia():
+    """En el movil hay que poder leerlo antes de pegarlo, y si el portapapeles falla (en iOS
+    pasa) tiene que seguir estando a la vista."""
+    h = _html()
+    assert "para-pegar" in h
+    assert ".para-pegar{" in h, "no tiene estilo propio: se confunde con el resto del texto"
+    assert "white-space:pre-wrap" in h, "un mensaje de varias lineas sale todo seguido"
+
+
+def test_se_dice_por_que_la_lista_es_la_que_es():
+    """Ver solo respuestas se lee como una averia cuando lo que pasa es que el cupo del dia ya
+    esta gastado. Una lista corta sin explicacion parece rota."""
+    h = _html()
+    assert "d.resumen" in h
+    assert "ya están hechas" in h and "quedan_hoy" in h
