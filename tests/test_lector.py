@@ -482,3 +482,25 @@ def test_el_verbo_por_omision_no_es_el_mismo_en_los_dos_sistemas():
     # Y si el aviso trae verbo, manda el suyo.
     brutas = [{"label": "✕ Cancelar", "patch": {"path": "/x/1", "verb": "POST", "body": {}}}]
     assert lector._acciones("cockpit", brutas, indice)[0].metodo == "POST"
+
+
+def test_zeno_no_decide_por_su_cuenta_que_puede_disparar():
+    """La puerta vive en el cockpit. Si Zeno replicara la regla serian dos listas, y la que
+    decide de verdad es la de alla: el boton diria que si y la llamada daria 401. Aqui solo se
+    comprueba que la marca del cockpit se respeta y no se recalcula."""
+    indice = lector._indice_del_catalogo()
+    brutas = [{"label": "▲ Publicar en X", "zeno_puede": False,
+               "patch": {"path": "/marketing/content-x/abc/publish", "verb": "POST", "body": {}}}]
+    assert lector._acciones("cockpit", brutas, indice)[0].se_puede_ejecutar is False
+    brutas[0]["zeno_puede"] = True
+    assert lector._acciones("cockpit", brutas, indice)[0].se_puede_ejecutar is True
+    # Sin marca se presume que si: los avisos del feed no la traen y ahi Zeno ya disparaba.
+    del brutas[0]["zeno_puede"]
+    assert lector._acciones("cockpit", brutas, indice)[0].se_puede_ejecutar is True
+
+
+def test_el_front_no_pinta_lo_que_zeno_no_puede_disparar():
+    """Un boton que falla DESPUES de avisar de que es irreversible es peor que no tener boton."""
+    h = (lector.Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8") \
+        if hasattr(lector, "Path") else (RAIZ / "web" / "index.html").read_text(encoding="utf-8")
+    assert "a.se_puede_ejecutar !== false" in h

@@ -667,7 +667,7 @@ async function abreCola(cola, titulo) {
           h += '<a class="b" href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
                esc(a.etiqueta) + "</a>";
           pintados++;
-        } else if (a.url && /^https?:/.test(a.url) && a.op) {
+        } else if (a.url && /^https?:/.test(a.url) && a.op && a.se_puede_ejecutar !== false) {
           h += '<button class="b' + (a.efecto === "publica" ? " primaria" : "") +
                '" data-cola-accion="' + i + "-" + j + '">' + esc(a.etiqueta) + "</button>";
           pintados++;

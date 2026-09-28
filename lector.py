@@ -80,6 +80,8 @@ class Accion:
     #: Con que verbo y que cuerpo se dispara. Las acciones que solo abren no lo usan.
     metodo: str = "GET"
     cuerpo: dict | None = None
+    #: Si Zeno puede dispararla el, o hay que abrir el sistema. Lo dice QUIEN tiene la puerta.
+    se_puede_ejecutar: bool = True
 
     @property
     def se_puede_abrir(self) -> bool:
@@ -214,6 +216,8 @@ def _acciones(sistema: str, brutas: list, indice: dict) -> list:
             reversible=bool(ficha and getattr(ficha, "reversible", False)),
             metodo=metodo,
             cuerpo=cuerpo,
+            # Por omision True: los avisos del feed no traen la marca y ahi Zeno ya disparaba.
+            se_puede_ejecutar=bool(a.get("zeno_puede", True)),
         ))
     return fuera
 
@@ -402,7 +406,8 @@ def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str]:
             "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
                           "coste_api": a.coste_api, "url": a.url,
                           "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible,
-                          "metodo": a.metodo, "cuerpo": a.cuerpo}
+                          "metodo": a.metodo, "cuerpo": a.cuerpo,
+                          "se_puede_ejecutar": a.se_puede_ejecutar}
                          for a in acc],
         })
     return fuera, ""
