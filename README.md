@@ -1,7 +1,23 @@
 # Zeno — el asistente
 
-**STATUS:** `validating` (en uso diario del operador desde el 2026-09-28)
+**STATUS:** `graduated` — repo propio desde el 2026-09-28, con su historia (97 commits).
 **Abierto:** 2026-09-27 · **En producción:** [zeno.zenvrax.com](https://zeno.zenvrax.com)
+
+## Dónde vive cada cosa
+
+Zeno es una **fachada**: lee el cockpit (`zenvrax-io/`) y Xrise (`zenvrax-xrise/`), que son repos
+hermanos, y no guarda datos de negocio propios. El único estado suyo es el volumen `zeno-datos`
+(el permiso cifrado de Google, los avisos y el diario).
+
+El catálogo de acciones se **recolecta leyendo el código** de los otros dos, así que para
+regenerarlo hacen falta los tres repos al lado. Dentro del contenedor viaja congelado
+(`catalogo/congelado.json`), que es lo que hace que funcione sin ellos.
+
+```
+zenvrax-io/        el cockpit, y donde nació Zeno
+zenvrax-xrise/     GutLyn y Claire
+zenvrax-zeno/      esto
+```
 **Plan:** [plan del asistente](../../docs/PLAN-ASISTENTE.md)
 
 ## Qué sabe hacer hoy, medido contra producción el 2026-09-28
