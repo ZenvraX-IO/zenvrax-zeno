@@ -82,7 +82,16 @@ services:
       # A quien se le permite llamar al ejecutar. Una url que no empiece por una de estas no se
       # dispara aunque traiga contrato: la url llega por la API de otro sistema, o sea es un dato
       # de fuera, y un dato de fuera no elige a quien llama Zeno.
-      ZENO_CASAS: ${ZENO_CASAS:-https://n8n.zenvrax.com/,https://cockpit.zenvrax.com/,https://xrise.zenvrax.com/}
+      # Van las direcciones INTERNAS ademas de las publicas: Zeno lee y escribe por la red de
+      # Docker (ZENO_COCKPIT_URL arriba es http://cockpit-api:8802), asi que la url que el lector
+      # pone en una accion empieza por esa. Sin ellas aqui, el ejecutor rechazaba su propia url
+      # con "esa direccion no es de ninguno de los sistemas de casa": el default del codigo si las
+      # tenia, y esta linea lo pisaba en silencio.
+      ZENO_CASAS: ${ZENO_CASAS:-https://n8n.zenvrax.com/,https://cockpit.zenvrax.com/,https://xrise.zenvrax.com/,http://cockpit-api:8802/,http://ecomops-api:8803/}
+      # A quien se le manda la clave de escritura, que NO es lo mismo que a quien se puede llamar:
+      # n8n es de casa y no la necesita. Vacio, el ejecutor no se la manda a nadie y el cockpit
+      # contesta 401.
+      ZENO_CON_CLAVE: ${ZENO_CON_CLAVE:-http://cockpit-api:8802/,https://cockpit.zenvrax.com/api/}
       # Tiene que coincidir CARACTER A CARACTER con el URI de redireccion del cliente en Google.
       ZENO_URL_PUBLICA: ${ZENO_URL_PUBLICA:-https://zeno.zenvrax.com}
     volumes:
