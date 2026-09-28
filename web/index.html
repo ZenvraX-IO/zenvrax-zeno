@@ -862,9 +862,32 @@ function dondeConfirmar() {
   return capa || document.querySelector(".confirmar-aqui");
 }
 
+// Lo reversible, de un toque: se pide el vale y se confirma seguido. El vale sigue existiendo
+// (es de un solo uso y deja rastro en el diario), lo que desaparece es el paso que no aportaba.
+async function hazDirecto(pendiente, accion) {
+  try {
+    const pr = await api("/api/accion/proponer", { method: "POST", body: JSON.stringify({
+      op: accion.op, etiqueta: accion.etiqueta, url: accion.url, efecto: accion.efecto,
+      coste_api: !!accion.coste_api, titulo: pendiente.titulo,
+      metodo: accion.metodo || "GET", cuerpo: accion.cuerpo || null }) });
+    const d = await api("/api/accion/confirmar", { method: "POST",
+                                                   body: JSON.stringify({ vale: pr.vale }) });
+    if (!d.hecho) throw new Error(d.detalle || "no ha salido");
+    if (colaAbierta && !$("#capa-cola").hidden) abreCola(colaAbierta.cola, colaAbierta.titulo);
+    else cargaPendientes();
+  } catch (e) {
+    dondeConfirmar().innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  }
+}
+
+function _pideConfirmacion(accion) {
+  return accion.efecto === "publica" || !!accion.coste_api || accion.reversible === false;
+}
+
 async function proponeAccion(pendiente, accion) {
   const caja = dondeConfirmar();
   try {
+    if (!_pideConfirmacion(accion)) return hazDirecto(pendiente, accion);
     const pr = await api("/api/accion/proponer", { method: "POST", body: JSON.stringify({
       op: accion.op, etiqueta: accion.etiqueta, url: accion.url, efecto: accion.efecto,
       coste_api: !!accion.coste_api, titulo: pendiente.titulo,

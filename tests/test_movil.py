@@ -281,3 +281,38 @@ def test_ninguna_regla_de_css_se_declara_dos_veces_seguidas():
     selectores = re.findall(r"\n  ([.#a-zA-Z][^{\n]*)\{", css)
     repes = [s for s, n in collections.Counter(s.strip() for s in selectores).items() if n > 1]
     assert repes == [], f"selectores declarados mas de una vez: {repes}"
+
+
+def test_lo_reversible_no_pide_confirmacion():
+    """EL CASO (28-sep). El operador, mirando "Conecto": *"no llego a entender por que, a lo
+    mejor estamos haciendo algo demasiado complicado"*. Tenia razon: el camino de dos pasos se
+    diseño para lo que PUBLICA en su nombre, y aplicarlo tambien a anotar que alguien acepto una
+    invitacion es pedir permiso para algo que se deshace en un clic. Encima el cuadro salia al
+    final de la lista, lejos del boton que acababa de pulsar."""
+    h = _html()
+    assert "function _pideConfirmacion(" in h
+    trozo = h[h.index("function _pideConfirmacion("):]
+    trozo = trozo[:trozo.index("\n}")]
+    for condicion in ('efecto === "publica"', "coste_api", "reversible === false"):
+        assert condicion in trozo, f"deja de pedir confirmacion para algo que la necesita: {condicion}"
+    assert "hazDirecto(pendiente, accion)" in h, "no hay camino de un toque"
+
+
+def test_lo_que_publica_SIGUE_pidiendo_confirmacion():
+    """Es la barrera que el operador eligio dos veces. Un toque de mas en lo irreversible es
+    barato; uno de menos publica en Instagram sin querer."""
+    h = _html()
+    trozo = h[h.index("async function proponeAccion("):]
+    trozo = trozo[:trozo.index("async function haceAccion(")] if "async function haceAccion(" in trozo else trozo[:4000]
+    assert "if (!_pideConfirmacion(accion)) return hazDirecto" in trozo
+    assert "Esto se publica ahora y no se puede deshacer" in h
+    assert "hacer-ya" in h, "ya no existe el boton de confirmar"
+
+
+def test_el_camino_de_un_toque_sigue_pasando_por_el_vale():
+    """El vale es de un solo uso y deja rastro en el diario. Lo que desaparece es el paso que no
+    aportaba, no la unica puerta por la que sale algo."""
+    h = _html()
+    trozo = h[h.index("async function hazDirecto("):]
+    trozo = trozo[:trozo.index("function _pideConfirmacion(")]
+    assert "/api/accion/proponer" in trozo and "/api/accion/confirmar" in trozo
