@@ -1977,7 +1977,7 @@ document.querySelectorAll("[data-cerrar]").forEach(b =>
   b.onclick = () => { $("#" + b.dataset.cerrar).hidden = true; });
 
 // Si ya había sesión, se entra directo. Si el token ya no vale, `api` hace salir() solo.
-if (token) { $("#pantalla-login").hidden = true; $("#app").hidden = false; ver("hoy"); }
+if (token) dentro(token);
 </script>
 </body>
 </html>

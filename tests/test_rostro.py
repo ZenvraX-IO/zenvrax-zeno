@@ -251,3 +251,11 @@ def test_el_token_se_guarda_por_el_mismo_camino_que_siempre():
     trozo = trozo[:trozo.index("async function darDeAltaLaCara()")]
     assert "dentro(r.token)" in trozo
     assert "guarda.poner" not in trozo, "entra por su cuenta en vez de pasar por dentro()"
+
+
+def test_abrir_con_la_sesion_guardada_pasa_por_el_mismo_sitio():
+    """Abrir con la sesion ya guardada es LA forma normal de abrir la aplicacion. Si ese camino
+    repite a mano lo que hace `dentro()` en vez de llamarlo, todo lo que se añada a `dentro` (como
+    ofrecer el Face ID) no pasa justo en el caso mas frecuente. Paso: la tarjeta no salia nunca."""
+    h = _html()
+    assert "if (token) dentro(token);" in h, "el arranque no pasa por dentro()"
