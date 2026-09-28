@@ -787,6 +787,9 @@ async function cargaPendientes() {
     }
     c.innerHTML = html + '<div class="confirmar-aqui"></div><div id="lo-hecho"></div>';
     pintaHecho();
+    // Las dos colas del trabajo de hoy se piden APARTE y despues de pintar: tardan mas (el
+    // cockpit calcula el reparto del dia) y no tienen por que retrasar el resto de la pantalla.
+    pintaColasDeHoy();
     c.querySelectorAll("[data-aviso]").forEach(b => b.onclick = () => {
       const [i, j] = b.dataset.aviso.split("-").map(Number);
       const a = avisosEnPantalla[i];
@@ -950,7 +953,6 @@ async function busca() {
       }
     }
     c.innerHTML = html;
-    pintaColasDeHoy();
   } catch (e) { c.innerHTML = `<div class="aviso-fallo">${esc(e.message)}</div>`; }
 }
 

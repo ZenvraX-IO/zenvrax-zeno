@@ -156,3 +156,16 @@ def test_abrir_una_cola_esta_entre_lo_que_puede_tardar():
     h = _html()
     lentas = re.search(r"const LENTAS = \[(.*?)\];", h, re.S).group(1)
     assert '"/api/cola"' in lentas, "abrir una cola se rinde con el tope corto"
+
+
+def test_las_colas_de_hoy_se_pintan_desde_la_pantalla_que_las_enseña():
+    """Estuvo puesta dentro de `busca()`, que es la funcion de buscar en la documentacion: la
+    ficha no salia nunca y no habia ningun error, porque el codigo se ejecutaba en un sitio donde
+    no habia nada que pintar. Un reemplazo que casa con un `catch` parecido acaba en otra
+    funcion, y eso no lo dice ni el navegador ni el compilador."""
+    h = _html()
+    i = h.index("async function cargaPendientes()")
+    fin = h.index("\n}", h.index("pintaHecho();", i))
+    assert "pintaColasDeHoy();" in h[i:fin], "no se pintan desde la pantalla de Trabajo"
+    # Y en ningun otro sitio: dos llamadas serian dos peticiones por carga.
+    assert h.count("pintaColasDeHoy();") == 1
