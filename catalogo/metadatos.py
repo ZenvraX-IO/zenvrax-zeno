@@ -37,6 +37,19 @@ CONTRATOS: dict[str, Contrato] = {
         que_hace="Anota hasta que mensaje del arco se ha enviado, y programa el siguiente",
         efecto=CAMBIA_ESTADO, reversible=True,
         guarda="tope de 15 avances al dia; el mensaje se copia y se pega en LinkedIn a mano"),
+    # Cerrar una respuesta ya atendida. Dos claves porque hay dos caminos: con arco se avanza
+    # (el sistema sabe asi que le contestaste), y sin arco se esconde el aviso. Ninguna manda
+    # nada: contestar se hace EN LinkedIn.
+    "cockpit|PATCH|/marketing/linkedin/{pid}/arc|arc_stage=<dinamico>|✓ Ya le he contestado": Contrato(
+        op="dm.respuesta_atendida",
+        que_hace="Anota que ya se contesto a quien habia escrito, y programa el siguiente paso",
+        efecto=CAMBIA_ESTADO, reversible=True,
+        guarda="no escribe a nadie: la respuesta se manda a mano en LinkedIn"),
+    "cockpit|POST|/notifications/dismiss|item_id=reply:{pid}|✓ Contestado, quitar de la lista": Contrato(
+        op="aviso.esconder",
+        que_hace="Esconde el aviso de una respuesta ya atendida cuando no hay arco que avanzar",
+        efecto=CAMBIA_ESTADO, reversible=True,
+        guarda="no borra a nadie ni cambia su estado: vuelve a salir si el de debajo cambia"),
     "cockpit|POST|/marketing/x-targets/{tid}/mark-engaged||✓ Respondí": Contrato(
         op="x.ya_respondi",
         que_hace="Anota que ya se respondio a esa cuenta hoy, y sale del recordatorio",
