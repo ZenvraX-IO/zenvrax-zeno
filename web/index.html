@@ -329,6 +329,10 @@
        La del cockpit sigue debajo, escondida tras el enlace, porque esta clave se suma y no
        sustituye: si algun dia se quita la variable, aquello sigue funcionando. -->
   <div id="paso0">
+    <!-- Face ID PRIMERO y grande: es la puerta de cada dia en cuanto esta dado de alta. La clave
+         se queda debajo porque tiene que seguir existiendo (un telefono se pierde, y un iPad
+         nuevo no tiene la llave todavia), pero deja de ser lo que se ve al abrir. -->
+    <button id="btn-cara" class="b primaria grande" hidden>Entrar con Face ID</button>
     <input id="clave" class="campo" type="password" placeholder="clave de Zeno"
            autocomplete="current-password" enterkeyhint="go">
     <button id="btn-clave" class="b primaria grande">Entrar</button>
@@ -543,6 +547,46 @@ function dentro(t) {
   token = t; guarda.poner(t);
   $("#pantalla-login").hidden = true; $("#app").hidden = false;
   ver("hoy");
+  ofreceLaCara();
+}
+
+// Se ofrece UNA vez y no se insiste: si dice que no, no vuelve a salir hasta que se borre el
+// recuerdo. Una aplicacion que pregunta lo mismo cada vez que la abres enseña a decir que no sin
+// leer. Y solo si no hay ninguna dada de alta: no tiene sentido pedirlo dos veces al mismo movil.
+async function ofreceLaCara() {
+  if (!hayCara) return;
+  try { if (localStorage.getItem("zeno.cara.no")) return; } catch {}
+  let estado;
+  try { estado = await api("/api/rostro"); } catch { return; }
+  if (estado.hay) return;
+  const caja = document.createElement("div");
+  caja.className = "tarjeta";
+  caja.style.margin = "0 0 14px";
+  caja.innerHTML = '<div class="post">Entra con Face ID</div>' +
+    '<div class="extracto">Para no escribir la clave cada vez. Se queda en el llavero del ' +
+    'teléfono, así que no se pierde aunque iOS limpie los datos del sitio.</div>' +
+    '<div class="btns"><button class="b primaria" id="cara-si">Activarlo</button>' +
+    '<button class="b" id="cara-no">Ahora no</button></div>';
+  const donde = document.querySelector("main");
+  if (!donde) return;
+  donde.insertBefore(caja, donde.firstChild);
+  caja.querySelector("#cara-no").onclick = () => {
+    try { localStorage.setItem("zeno.cara.no", "1"); } catch {}
+    caja.remove();
+  };
+  caja.querySelector("#cara-si").onclick = async () => {
+    caja.querySelector(".extracto").textContent = "mira el teléfono…";
+    try {
+      const r = await darDeAltaLaCara();
+      if (!r) { caja.querySelector(".extracto").textContent = "lo has cancelado"; return; }
+      caja.querySelector(".post").textContent = "Listo, ya puedes entrar con Face ID";
+      caja.querySelector(".extracto").textContent = r.apodo;
+      caja.querySelector(".btns").remove();
+      setTimeout(() => caja.remove(), 4000);
+    } catch (e) {
+      caja.querySelector(".extracto").textContent = e.message || "no he podido activarlo";
+    }
+  };
 }
 
 function salir() {
@@ -1617,6 +1661,94 @@ zona.addEventListener("touchend", async () => {
   alturaTiron(34, "actualizando", "girando");
   try { await recargaVista(); } finally { alturaTiron(0, "", ""); }
 });
+
+// ------------------------------------------------------------------ entrar con Face ID
+//
+// POR QUE. El operador: *"con el Face ID fuera mas que suficiente y no te estuviera pidiendo
+// codigo o contraseña cada vez"*. Medido: el token dura 90 dias y su firma no cambia al reiniciar
+// el servicio, asi que no lo echaba el servidor. Lo que se pierde es el almacenamiento del
+// navegador, que iOS limpia. Una passkey NO vive ahi: vive en el llavero, sobrevive a esa
+// limpieza y viaja a los demas dispositivos de la cuenta. Por eso esto lo arregla de raiz y
+// guardar la clave "mas tiempo" no lo habria arreglado.
+//
+// La cara nunca sale del telefono. El movil comprueba que eres tu y solo entonces firma con una
+// clave privada que tampoco sale de su chip; aqui viaja la firma, que el servidor comprueba.
+
+const hayCara = !!(window.PublicKeyCredential && navigator.credentials);
+
+// El navegador habla en binario y la API en texto. Estas dos hacen la traduccion, y se escriben a
+// mano a proposito: es una docena de lineas y evita una dependencia mas en la puerta de entrada.
+const aBytes = (s) => Uint8Array.from(atob(String(s).replace(/-/g, "+").replace(/_/g, "/")
+                     .padEnd(String(s).length + (4 - String(s).length % 4) % 4, "=")),
+                     c => c.charCodeAt(0));
+const aTexto = (b) => btoa(String.fromCharCode(...new Uint8Array(b)))
+                      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+function preparaAlta(o) {
+  return { ...o, challenge: aBytes(o.challenge),
+           user: { ...o.user, id: aBytes(o.user.id) },
+           excludeCredentials: (o.excludeCredentials || []).map(c => ({ ...c, id: aBytes(c.id) })) };
+}
+function preparaEntrada(o) {
+  return { ...o, challenge: aBytes(o.challenge),
+           allowCredentials: (o.allowCredentials || []).map(c => ({ ...c, id: aBytes(c.id) })) };
+}
+function empaqueta(c) {
+  const r = c.response;
+  const fuera = { id: c.id, rawId: aTexto(c.rawId), type: c.type,
+                  response: { clientDataJSON: aTexto(r.clientDataJSON) } };
+  if (r.attestationObject) fuera.response.attestationObject = aTexto(r.attestationObject);
+  if (r.authenticatorData) fuera.response.authenticatorData = aTexto(r.authenticatorData);
+  if (r.signature) fuera.response.signature = aTexto(r.signature);
+  if (r.userHandle) fuera.response.userHandle = aTexto(r.userHandle);
+  return fuera;
+}
+
+async function entrarConCara() {
+  const e = $("#error-login");
+  e.textContent = "";
+  try {
+    const opciones = await api("/api/rostro/entrar");
+    const c = await navigator.credentials.get({ publicKey: preparaEntrada(opciones) });
+    const r = await api("/api/rostro/entrar", { method: "POST",
+                                                body: JSON.stringify({ respuesta: empaqueta(c) }) });
+    dentro(r.token);
+  } catch (err) {
+    // Que el operador cancele el Face ID NO es un error que haya que enseñar en rojo: es que ha
+    // cambiado de idea, y lo que toca es dejarle la clave delante.
+    if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) return;
+    e.textContent = err.message || "no he podido entrar con Face ID";
+  }
+}
+
+async function darDeAltaLaCara() {
+  try {
+    const opciones = await api("/api/rostro/alta");
+    const c = await navigator.credentials.create({ publicKey: preparaAlta(opciones) });
+    const r = await api("/api/rostro/alta", {
+      method: "POST",
+      body: JSON.stringify({ respuesta: empaqueta(c),
+                             apodo: /iPhone|iPad|Android/.exec(navigator.userAgent)?.[0] || "" }) });
+    return r;
+  } catch (err) {
+    if (err && (err.name === "NotAllowedError" || err.name === "AbortError")) return null;
+    throw err;
+  }
+}
+
+// Al abrir el login se pregunta si hay alguna cara dada de alta. Si la hay, el boton sale; si no,
+// no se enseña: un boton que no puede funcionar es peor que no tenerlo.
+if (hayCara) {
+  fetch("/api/rostro").then(r => r.json()).then(d => {
+    if (d.hay) {
+      $("#btn-cara").hidden = false;
+      $("#btn-cara").onclick = entrarConCara;
+      // Y se intenta solo, que es lo que pidio: abrir y estar dentro. Si lo cancela, se queda la
+      // clave debajo como siempre.
+      if (!token) entrarConCara();
+    }
+  }).catch(() => {});
+}
 
 $("#btn-clave").onclick = entrarConClave;
 $("#clave").onkeydown = (e) => { if (e.key === "Enter") entrarConClave(); };

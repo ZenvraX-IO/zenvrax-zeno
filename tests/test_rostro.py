@@ -188,3 +188,66 @@ def test_este_modulo_no_emite_sesiones():
     fuente = (RAIZ / "servicio" / "rostro.py").read_text(encoding="utf-8")
     for prohibido in ("def emite", "hmac.new", "jwt", "z1."):
         assert prohibido not in fuente, f"rostro.py está emitiendo sesiones por su cuenta: {prohibido}"
+
+
+# --------------------------------------------------------------------------------------------
+# La parte que se ve. Se lee del HTML: no hay forma de probar un Face ID de verdad sin un iPhone
+# y una cara, pero si se puede guardar que las decisiones no se deshagan sin querer.
+# --------------------------------------------------------------------------------------------
+
+def _html() -> str:
+    return (RAIZ / "web" / "index.html").read_text(encoding="utf-8")
+
+
+def test_el_boton_no_se_enseña_si_no_hay_ninguna_cara_de_alta():
+    """Un boton que no puede funcionar es peor que no tenerlo: se pulsa, no pasa nada, y la
+    siguiente vez ya no se prueba lo que si funciona."""
+    h = _html()
+    assert 'id="btn-cara" class="b primaria grande" hidden' in h, "el boton nace visible"
+    assert '$("#btn-cara").hidden = false' in h
+    assert "if (d.hay)" in h, "nada comprueba si hay alguna cara dada de alta"
+
+
+def test_cancelar_el_face_id_no_es_un_error():
+    """Que el operador cancele NO es un fallo que enseñar en rojo: ha cambiado de idea, y lo que
+    toca es dejarle la clave delante."""
+    h = _html()
+    assert '"NotAllowedError"' in h and '"AbortError"' in h
+
+
+def test_la_clave_sigue_estando():
+    """Un telefono se pierde y un dispositivo nuevo no tiene la llave. Si Face ID fuera la unica
+    puerta, perder el movil seria perder la aplicacion."""
+    h = _html()
+    assert 'id="clave"' in h and 'id="btn-clave"' in h
+    assert "entrarConClave" in h
+
+
+def test_lo_de_activarlo_se_ofrece_una_vez_y_no_se_insiste():
+    """Una aplicacion que pregunta lo mismo cada vez que la abres enseña a decir que no sin leer,
+    y entonces deja de servir para avisar de nada."""
+    h = _html()
+    assert 'localStorage.getItem("zeno.cara.no")' in h
+    assert 'localStorage.setItem("zeno.cara.no"' in h
+
+
+def test_el_aviso_no_se_pone_donde_lo_van_a_borrar():
+    """`#v-hoy` se repinta entero con innerHTML en cada carga. Una tarjeta metida ahi desaparece
+    sola y nadie entiende por que."""
+    h = _html()
+    # Se corta en el cierre de la propia funcion y no mucho mas abajo: el trozo largo se comia
+    # `cargaHoy`, que SI usa #v-hoy con razon, y el guardian saltaba por codigo ajeno.
+    trozo = h[h.index("async function ofreceLaCara()"):]
+    trozo = trozo[:trozo.index('caja.querySelector("#cara-no")')]
+    assert 'querySelector("main")' in trozo, "el aviso se mete donde se repinta"
+    assert '$("#v-hoy")' not in trozo
+
+
+def test_el_token_se_guarda_por_el_mismo_camino_que_siempre():
+    """Entrar con la cara tiene que acabar en `dentro()`, que es quien guarda la sesion. Si
+    escribiera el token por su cuenta, habria dos formas de entrar y una sola vigilada."""
+    h = _html()
+    trozo = h[h.index("async function entrarConCara()"):]
+    trozo = trozo[:trozo.index("async function darDeAltaLaCara()")]
+    assert "dentro(r.token)" in trozo
+    assert "guarda.poner" not in trozo, "entra por su cuenta en vez de pasar por dentro()"
