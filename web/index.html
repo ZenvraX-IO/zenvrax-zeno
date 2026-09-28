@@ -661,7 +661,10 @@ function desdeCuando(cuando) {
   return "hace " + Math.floor(dias / 30) + " meses";
 }
 
+let colaAbierta = null;
+
 async function abreCola(cola, titulo) {
+  colaAbierta = { cola, titulo };
   const capa = $("#capa-cola");
   $("#cola-titulo").textContent = titulo || cola;
   $("#cola-cuerpo").innerHTML = '<div class="cargando">cargando…</div>';
@@ -904,7 +907,10 @@ async function haceAccion() {
       '<div class="propuesta"><div class="q">Hecho: ' + esc(d.etiqueta) + "</div>" +
       '<div class="c">' + esc(d.titulo || "") + (d.salio_al_mundo ? " · ya está publicado" : "") +
       "</div></div>";
-    cargaPendientes();
+    // Se recarga LO QUE SE ESTA MIRANDO. Si hay una cola abierta, esa: recargar la pantalla de
+    // debajo dejaba la tarjeta ahi y parecia que el boton no habia hecho nada.
+    if (colaAbierta && !$("#capa-cola").hidden) abreCola(colaAbierta.cola, colaAbierta.titulo);
+    else cargaPendientes();
   } catch (e) {
     b.disabled = false; b.textContent = "Publicar";
     dondeConfirmar().insertAdjacentHTML("beforeend",

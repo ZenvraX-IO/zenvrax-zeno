@@ -237,3 +237,14 @@ def test_lo_que_se_pasa_del_cupo_se_ve_marcado():
     h = _html()
     assert "e.fuera_de_cupo" in h, "no se marca lo que se pasa del cupo"
     assert "pasa del cupo de hoy" in h
+
+
+def test_al_ejecutar_dentro_de_una_cola_se_recarga_esa_cola():
+    """EL FALLO (28-sep). Tras confirmar se recargaba la vista de Trabajo, que esta DEBAJO de la
+    capa abierta: la tarjeta seguia en su sitio y el operador veia que no pasaba nada. Dijo
+    exactamente eso: *"me sale para hacerlo, pero no me lleva a ningun sitio ni hace nada"*."""
+    h = _html()
+    assert "let colaAbierta" in h, "no se recuerda que cola esta abierta"
+    trozo = h[h.index('"><div class="q">Hecho: '):]
+    trozo = trozo[:trozo.index("} catch (e)")]
+    assert "abreCola(colaAbierta.cola" in trozo, "no se recarga la cola que se esta mirando"
