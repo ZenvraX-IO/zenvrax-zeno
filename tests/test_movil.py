@@ -147,3 +147,12 @@ def test_ningun_id_se_repite_en_la_pagina():
     ids = re.findall(r'\bid="([a-zA-Z0-9_-]+)"', h)
     repetidos = [i for i, n in collections.Counter(ids).items() if n > 1]
     assert repetidos == [], f"ids repetidos en la pagina: {repetidos}"
+
+
+def test_abrir_una_cola_esta_entre_lo_que_puede_tardar():
+    """Abrir la de DMs hace que el cockpit calcule el reparto del dia entero. Con el tope corto
+    se rendia a los 20 segundos y la ficha no salia NUNCA, sin dar ningun error: el catch se lo
+    tragaba. Se perdio un rato buscando un fallo que el navegador ya conocia."""
+    h = _html()
+    lentas = re.search(r"const LENTAS = \[(.*?)\];", h, re.S).group(1)
+    assert '"/api/cola"' in lentas, "abrir una cola se rinde con el tope corto"

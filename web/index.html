@@ -465,7 +465,7 @@ let challenge = "";
 const ESPERA = 20000;
 const ESPERA_LARGA = 75000;
 const LENTAS = ["/api/chat", "/api/hoy", "/api/correo/redactar", "/api/pendientes",
-                "/api/negocios", "/api/personal", "/api/orden"];
+                "/api/negocios", "/api/personal", "/api/orden", "/api/cola"];
 
 async function api(ruta, opciones = {}) {
   const tope = LENTAS.some(l => ruta.startsWith(l)) ? ESPERA_LARGA : ESPERA;
@@ -967,7 +967,9 @@ async function pintaColasDeHoy() {
       if (!d.cuantos) return "";
       return '<button class="ficha abrible" data-cola="' + cola + '"><b>' + d.cuantos +
              "</b><span>" + esc(titulo) + '</span><span class="flecha">›</span></button>';
-    } catch (e) { return ""; }
+    } catch (e) {
+      return '<div class="ficha"><b>?</b><span>' + esc(titulo) + ": " + esc(e.message) + "</span></div>";
+    }
   }));
   const hay = trozos.filter(Boolean).join("");
   caja.innerHTML = hay
