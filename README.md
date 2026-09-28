@@ -54,17 +54,19 @@ publicado, cancelar un magnet, descartar un thread. La lista vive en el cockpit
 acción con si Zeno puede: replicar esa regla aquí serían dos listas que se separan. Lo que
 publica no se ofrece como botón, lleva al cockpit.
 
-**Falta Xrise**, que sigue dando el recuento: las 31 de GutLyn se ven pero no se abren.
+**Cerrada tambien del lado de Xrise** (28-sep): las 31 de GutLyn y Claire se abren y se publican
+desde el movil, porque el operador decidio que *"se pueda publicar puesto GutLyn es mia"*. Su
+puerta vive en `saas/api/app/core/puerta_zeno.py`, con las acciones exactas (`publish`,
+`regenerate`, `drop`) y no solo la ruta. Medido el 28-sep: las 8 colas responden las 113 enteras.
 
 **Zeno** es el nombre que eligió el operador el 2026-09-27 entre cuatro. Sale de Zenvrax y se queda
 en dos sílabas: la Z ata con la casa sin meterse en la línea X de los SaaS vendibles (Xrise, XSupport,
 XGuiide), así que no se confunde con un producto ni con la consultora. Se descartó `Torre` porque ya
 lo usa la torre de control de AIOS.
 
-Vive en `lab/` porque es un proyecto nuevo y la regla del repo lo pide. Cuando gradúe será el repo
-hermano `zenvrax-zeno/`, porque el operador decidió que **Zeno vive fuera** del cockpit y de Xrise
-para mantenerlos independientes. Nada de producción depende de esta carpeta: la dependencia
-va al revés, esto **lee** el código de las dos aplicaciones.
+Nació en `lab/zeno/` y **graduó a este repo el 28-sep**, porque el operador decidió que **Zeno vive
+fuera** del cockpit y de Xrise para mantenerlos independientes. Nada de producción depende de este
+repo: la dependencia va al revés, esto **lee** el código de las dos aplicaciones.
 
 ---
 
@@ -72,8 +74,9 @@ va al revés, esto **lee** el código de las dos aplicaciones.
 
 El asistente va a ejecutar cosas en nombre del operador. Solo el cockpit tiene **190 rutas que
 mutan**, y Xrise las suyas: si se le da esa API y se le pide que actúe, elige la llamada, y elegir es
-adivinar. Así que la lista está cerrada: **33 acciones**, las que ya son botones en las dos colas de
-aprobación, cada una con su contrato.
+adivinar. Así que la lista está cerrada: **40 acciones** (30 del cockpit, 10 de Xrise), las que ya son botones
+en las dos colas de aprobación, cada una con su contrato. **27 escriben algo**; las otras 13 solo
+abren una pantalla.
 
 ```
 catalogo/
@@ -140,9 +143,9 @@ SIN CONTRATO en vez de ocultarse.
 ## Cómo se ejecuta
 
 ```bash
-python -m pytest lab/zeno/tests -q               # 17 pruebas (10 del catalogo, 7 del lector)
-python lab/zeno/ver_catalogo.py --ejecutan        # las 20 acciones que escriben algo
-ZENO_READ_KEY=... python3 lab/zeno/zeno.py todo   # lo pendiente y el estado, de los dos negocios
+python -m pytest tests -q                  # 375 pruebas en 17 ficheros
+python ver_catalogo.py --ejecutan          # las 27 acciones que escriben algo
+ZENO_READ_KEY=... python3 zeno.py todo     # lo pendiente y el estado, de los dos negocios
 ```
 
 La clave vive en el `.env` del servidor. Sin ella, Zeno lo dice en vez de devolver listas vacías.
@@ -150,26 +153,41 @@ La clave vive en el `.env` del servidor. Sin ella, Zeno lo dice en vez de devolv
 `.github/workflows/ci-zeno.yml` las corre cuando cambia una cola o el catálogo, porque el CI del
 cockpit no las vería: corre `pytest` dentro de `cockpit/api`, cuyo `testpaths` es `tests`.
 
-**Alcance, y conviene saberlo:** en CI solo está este repo, así que se validan las **23 acciones del
+**Alcance, y conviene saberlo:** en CI solo está este repo, así que se validan las **30 acciones del
 cockpit**. Las **10 de Xrise** viven en otro repo privado y el test las omite en vez de fallar;
 `--alcance` lo dice. Se validan al correr los tests en local, donde los dos repos están en el disco.
 
-## Lo siguiente
+## Lo que falta, medido contra producción el 2026-09-28
 
-**J3: la puerta propia** (`zeno.zenvrax.com`), que es cuando la app se vuelve necesaria. Queda
-pendiente el icono, que lo elige el operador.
+J3 (la puerta propia) y J4 (el correo y el calendario) están cerradas. Lo que queda, por orden de
+lo que más le cuesta al operador:
 
-**J4: el correo y el calendario.** Hoy Zeno lee los dos sistemas, no la bandeja. Serán **dos
-autorizaciones OAuth separadas**, una por cuenta de Google, porque las cuentas del operador ya están
-separadas por negocio: así la frontera la sostiene Google y no un `if` en el código.
+**El correo se queda a un paso.** Zeno lee las dos bandejas y redacta el borrador, pero no envía:
+hay que abrir Gmail para darle a enviar. Es la única tarea diaria que empieza en Zeno y termina
+fuera.
+
+**Solo cubre marketing y contacto.** Las 8 colas son contenido, DMs y engagement, más cerrar
+tareas. Finanzas, leads, propuestas, facturas y solicitudes de acceso no tienen cola: sus alertas
+sí llegan al móvil (el 28-sep sonaron el beneficio mensual y el runway), pero no hay nada que
+hacer con ellas desde aquí.
+
+**No busca al operador.** Fuera de los cinco avisos y las tres líneas de la mañana, Zeno es
+reactivo: no dice "llevas tres días sin tocar los DMs" ni "esto lleva dos semanas esperando".
+Tiene el dato y, desde el 28-sep, la memoria para no repetirlo.
+
+**El resumen de la mañana es de una sola vez.** Se calcula al abrir la aplicación y queda cacheado
+el día entero, así que a las seis de la tarde cuenta la mañana. Fue para no pagar diez llamadas
+por abrirla diez veces; se puede rehacer cuando el pendiente cambie de verdad.
+
+**Decidido NO hacer** (operador, 28-sep): que aprenda de lo que rechaza.
 
 ## Desplegar
 
 ```bash
 # en el servidor
-cd /home/zenvrax-io && git pull
-cd lab/zeno && docker compose -p zeno --env-file /home/zenvrax-io/.env \
-    -f infra/docker-compose.zeno.yml up -d --build
+cd /home/zenvrax-zeno && git pull
+docker compose -p zeno --env-file /home/zenvrax-io/.env \
+    -f /home/zenvrax-zeno/infra/docker-compose.zeno.yml up -d --build
 ```
 
 **Si tocas el Caddyfile, ojo con una trampa que costó media hora el 27-sep.** Caddy monta el
