@@ -165,6 +165,31 @@ def _acciones(sistema: str, brutas: list, indice: dict) -> list:
     return fuera
 
 
+def _filas(datos) -> list:
+    """Las filas de un feed de avisos, se llame como se llame la clave.
+
+    EL FALLO QUE ESTO ARREGLA, y estuvo desde el primer dia: el cockpit devuelve
+    `{"unread": n, "rows": [...]}` y aqui se leia `datos.get("items", [])`, o sea CERO. Las ocho
+    filas del cockpit se tiraban enteras y en la pantalla solo salia lo de Xrise.
+
+    Y no se noto porque el RECUENTO viene de otro sitio (`/aios/pendiente-todo`) y salia bien: los
+    113 pendientes de arriba eran correctos mientras la lista de abajo estaba coja. Un numero que
+    cuadra al lado de una lista que no, y nadie mira que sean la misma fuente.
+
+    Por eso se aceptan las dos claves en vez de cambiar una por otra: dos sistemas distintos las
+    nombran distinto, y el dia que aparezca un tercero no puede volver a fallar en silencio.
+    """
+    if isinstance(datos, list):
+        return datos
+    if not isinstance(datos, dict):
+        return []
+    for clave in ("rows", "items", "notifications", "data"):
+        v = datos.get(clave)
+        if isinstance(v, list):
+            return v
+    return []
+
+
 def pendientes() -> tuple[list[Pendiente], list[str]]:
     """Todo lo que espera una decision, de los dos negocios. Devuelve (lista, avisos de fallo)."""
     indice = _indice_del_catalogo()
@@ -174,7 +199,7 @@ def pendientes() -> tuple[list[Pendiente], list[str]]:
     if err:
         fallos.append(f"Zenvrax (cockpit): {err}")
     else:
-        for n in (datos if isinstance(datos, list) else datos.get("items", [])):
+        for n in _filas(datos):
             acc = _acciones("cockpit", n.get("actions"), indice)
             if not acc:
                 continue                       # un aviso sin botones no espera una decision
@@ -186,7 +211,7 @@ def pendientes() -> tuple[list[Pendiente], list[str]]:
     if err:
         fallos.append(f"GutLyn (Xrise): {err}")
     else:
-        for n in (datos if isinstance(datos, list) else datos.get("items", [])):
+        for n in _filas(datos):
             acc = _acciones("xrise", n.get("actions"), indice)
             if not acc:
                 continue

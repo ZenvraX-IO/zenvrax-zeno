@@ -314,3 +314,47 @@ def test_sin_ids_el_arreglo_del_duplicado_no_se_lleva_la_lista(monkeypatch):
     plan, _ = lector.plan_del_dia()
     # Se va la que es el foco, por titulo, y se quedan las otras dos.
     assert [u["titulo"] for u in plan["urgentes"]] == ["Otra", "Y otra"]
+
+
+# ---------------------------------------------------------------- el feed que se leia vacio
+
+def test_el_cockpit_devuelve_rows_y_no_items(monkeypatch):
+    """EL FALLO QUE ESTUVO DESDE EL PRIMER DIA. El cockpit contesta {"unread": n, "rows": [...]} y
+    aqui se leia `datos.get("items", [])`, o sea CERO: las ocho filas del cockpit se tiraban
+    enteras y en la pantalla solo salia lo de Xrise.
+
+    Lo dijo el operador mirando las dos aplicaciones a la vez: "el cockpit dice todas estas
+    notificaciones de tareas por hacer pero no Zeno".
+    """
+    def falso(base, ruta, cab=None):
+        if "notifications" in ruta and base == lector.COCKPIT:
+            return {"unread": 3, "rows": [
+                {"title": "Post de LinkedIn", "body": "", "actions": [
+                    {"label": "Aprobar", "url": "https://n8n.zenvrax.com/webhook/x"}]}]}, None
+        return {"items": []}, None
+    monkeypatch.setattr(lector, "_seguro", falso)
+    monkeypatch.setattr(lector, "_indice_del_catalogo", dict)
+    lista, fallos = lector.pendientes()
+    assert len(lista) == 1, "las filas del cockpit se estan tirando"
+    assert lista[0].titulo == "Post de LinkedIn"
+
+
+def test_se_aceptan_las_dos_formas_de_nombrar_las_filas():
+    """Dos sistemas distintos las nombran distinto. Cambiar una clave por la otra habria arreglado
+    el cockpit y roto Xrise; aceptando las dos, el dia que aparezca un tercer sistema no puede
+    volver a fallar en silencio."""
+    assert lector._filas({"rows": [1, 2]}) == [1, 2]
+    assert lector._filas({"items": [3]}) == [3]
+    assert lector._filas([4, 5]) == [4, 5]
+    assert lector._filas({"unread": 7}) == []
+    assert lector._filas(None) == []
+
+
+def test_un_feed_vacio_no_se_confunde_con_uno_que_no_se_pudo_leer(monkeypatch):
+    """La leccion de fondo: el RECUENTO venia de otra fuente y salia bien, asi que los 113 de
+    arriba eran correctos mientras la lista de abajo estaba coja. Un numero que cuadra al lado de
+    una lista que no, y nadie mira que sean la misma fuente."""
+    monkeypatch.setattr(lector, "_seguro", lambda b, r, c=None: ({"rows": []}, None))
+    monkeypatch.setattr(lector, "_indice_del_catalogo", dict)
+    lista, fallos = lector.pendientes()
+    assert lista == [] and fallos == [], "vacio de verdad no es un fallo, y se distingue"
