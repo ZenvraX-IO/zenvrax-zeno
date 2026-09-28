@@ -283,6 +283,24 @@ def _contexto_de_hoy(plan, lo_torcido, negocios, personales):
     return (salto * 2).join(t) or "(hoy no hay datos: dilo)"
 
 
+@app.get("/api/cola/{cola}")
+async def api_cola(cola: str, limite: int = Query(default=25, ge=1, le=100),
+                   authorization: str = Header(default="")):
+    """Una cola entera, para despacharla desde aqui en vez de abrir el cockpit."""
+    _quien(authorization)
+    elementos, fallo = lector.elementos_de_cola(cola, limite)
+    return {"cola": cola, "cuantos": len(elementos), "elementos": elementos,
+            "fallos": [fallo] if fallo else []}
+
+
+@app.get("/api/colas")
+async def api_colas(authorization: str = Header(default="")):
+    """Cuales se pueden abrir. El front no lo adivina: lo pregunta."""
+    _quien(authorization)
+    cuales, fallos = lector.colas_que_se_abren()
+    return {"colas": cuales, "fallos": fallos}
+
+
 @app.get("/api/hoy")
 async def api_hoy(narrar: bool = Query(default=True), authorization: str = Header(default="")):
     """Lo primero de la mañana: el foco, lo urgente, y tres lineas sobre que significa.

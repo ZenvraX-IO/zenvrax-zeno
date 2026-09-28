@@ -123,6 +123,12 @@
   .ficha{display:flex;gap:12px;align-items:baseline;padding:9px 0;
          border-top:1px solid var(--linea);font-size:var(--t3)}
   .ficha:last-child{border-bottom:1px solid var(--linea)}
+  /* La ficha de una cola que se puede ABRIR. Se ve que es tocable sin gritarlo: la flecha y el
+     fondo al pulsar bastan, y asi las que no se abren no parecen rotas. */
+  .ficha.abrible{width:100%;background:none;border-left:0;border-right:0;border-top:1px solid var(--linea);
+                 color:inherit;text-align:left;font:inherit;cursor:pointer}
+  .ficha.abrible:active{background:#1a1a1f}
+  .ficha .flecha{margin-left:auto;color:var(--apagado);font-size:18px}
   .ficha b{min-width:30px;text-align:right;font-variant-numeric:tabular-nums;font-size:16px}
 
   /* La caja de buscar, pensada para el pulgar y no para el raton:
@@ -409,6 +415,14 @@
   <div id="dice-pregunta" class="oyendo-texto"></div>
 </div>
 
+<div id="capa-cola" class="capa" hidden>
+  <div class="cabecera">
+    <div class="t" id="cola-titulo">Cola</div>
+    <button class="salir" data-cerrar="capa-cola">cerrar</button>
+  </div>
+  <div class="cuerpo"><div id="cola-cuerpo"></div></div>
+</div>
+
 <div id="capa-buscar" class="capa" hidden>
   <div class="cabecera">
     <div class="t">Buscar</div>
@@ -545,6 +559,7 @@ async function comprobarCodigo() {
 
 function dentro(t) {
   token = t; guarda.poner(t);
+  cargaColasAbribles().then(() => { if (!$("#v-trabajo").hidden) cargaPendientes(); });
   $("#pantalla-login").hidden = true; $("#app").hidden = false;
   ver("hoy");
   ofreceLaCara();
@@ -618,6 +633,54 @@ function pintaAccion(a, i, j) {
   return `<button class="${clase}" data-hacer="${i}-${j}">${texto}</button>`;
 }
 
+// Que colas se pueden abrir enteras. Se PREGUNTA al servidor en vez de escribirlo aqui: una
+// lista a mano se queda vieja en cuanto el cockpit añade o quita una, y sin fallar.
+let colasAbribles = { cockpit: [], xrise: [] };
+
+async function cargaColasAbribles() {
+  try { colasAbribles = (await api("/api/colas")).colas || colasAbribles; } catch {}
+}
+
+//: La cola abierta ahora, para que los botones sepan a que elemento pertenecen.
+let colaEnPantalla = [];
+
+async function abreCola(cola, titulo) {
+  const capa = $("#capa-cola");
+  $("#cola-titulo").textContent = titulo || cola;
+  $("#cola-cuerpo").innerHTML = '<div class="cargando">cargando…</div>';
+  capa.hidden = false;
+  try {
+    const d = await api("/api/cola/" + encodeURIComponent(cola) + "?limite=50");
+    colaEnPantalla = d.elementos || [];
+    let h = "";
+    for (const f of d.fallos || []) h += '<div class="aviso-fallo">' + esc(f) + "</div>";
+    if (!colaEnPantalla.length) h += '<div class="vacio">Nada aquí. Cola vacía.</div>';
+    colaEnPantalla.forEach((e, i) => {
+      h += '<div class="tarjeta"><div class="neg">' + esc(e.negocio) +
+           (e.cuando ? ' <span style="color:var(--apagado)">' + esc(e.cuando) + "</span>" : "") +
+           "</div><div class=\"post\">" + esc(e.titulo) + "</div>" +
+           (e.cuerpo ? '<div class="extracto">' + esc(e.cuerpo) + "</div>" : "") +
+           '<div class="btns">';
+      (e.acciones || []).forEach((a, j) => {
+        h += a.se_puede_abrir
+          ? '<a class="b" href="' + esc(a.url) + '" target="_blank" rel="noopener">' + esc(a.etiqueta) + "</a>"
+          : '<button class="b' + (a.efecto === "publica" ? " primaria" : "") +
+            '" data-cola-accion="' + i + "-" + j + '">' + esc(a.etiqueta) + "</button>";
+      });
+      h += "</div></div>";
+    });
+    $("#cola-cuerpo").innerHTML = h + '<div id="confirmar-accion"></div>';
+    $("#cola-cuerpo").querySelectorAll("[data-cola-accion]").forEach(b => b.onclick = () => {
+      const [i, j] = b.dataset.colaAccion.split("-").map(Number);
+      // El MISMO camino que en el resto: propone, enseña lo que va a pasar y espera el OK. Una
+      // lista larga no es motivo para saltarse la confirmacion; al reves.
+      proponeAccion({ titulo: colaEnPantalla[i].titulo }, colaEnPantalla[i].acciones[j]);
+    });
+  } catch (e) {
+    $("#cola-cuerpo").innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  }
+}
+
 function pintaColas(colas, total) {
   if (!colas.length) return "";
   // FICHAS, no ocho cajas con un numero gigante. La pregunta que contesta esto es "cuanto queda y
@@ -627,7 +690,11 @@ function pintaColas(colas, total) {
           "</span></div><div class=\"fichas\">";
   for (const c of colas) {
     if (!c.cuantos) continue;
-    h += '<div class="ficha"><b>' + c.cuantos + "</b><span>" + esc(c.titulo) + "</span></div>";
+    const abrible = (colasAbribles.cockpit || []).includes(c.cola) && c.negocio !== "GutLyn+";
+    h += abrible
+      ? '<button class="ficha abrible" data-cola="' + esc(c.cola) + '"><b>' + c.cuantos +
+        "</b><span>" + esc(c.titulo) + '</span><span class="flecha">›</span></button>'
+      : '<div class="ficha"><b>' + c.cuantos + "</b><span>" + esc(c.titulo) + "</span></div>";
   }
   return h + "</div>";
 }
@@ -2033,12 +2100,16 @@ if (Voz.hay) {
 }
 
 $("#btn-chat").onclick = () => abreCapa("capa-chat");
+document.addEventListener("click", (e) => {
+  const f = e.target.closest("[data-cola]");
+  if (f) abreCola(f.dataset.cola, f.querySelector("span").textContent);
+});
 $("#btn-buscar").onclick = () => abreCapa("capa-buscar");
 document.querySelectorAll("[data-cerrar]").forEach(b =>
   b.onclick = () => { $("#" + b.dataset.cerrar).hidden = true; });
 
 // Si ya había sesión, se entra directo. Si el token ya no vale, `api` hace salir() solo.
-if (token) dentro(token);
+if (token) { cargaColasAbribles().then(() => dentro(token)); }
 </script>
 </body>
 </html>

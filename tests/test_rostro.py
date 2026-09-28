@@ -258,7 +258,9 @@ def test_abrir_con_la_sesion_guardada_pasa_por_el_mismo_sitio():
     repite a mano lo que hace `dentro()` en vez de llamarlo, todo lo que se añada a `dentro` (como
     ofrecer el Face ID) no pasa justo en el caso mas frecuente. Paso: la tarjeta no salia nunca."""
     h = _html()
-    assert "if (token) dentro(token);" in h, "el arranque no pasa por dentro()"
+    arranque = [l for l in h.splitlines() if l.startswith("if (token)")]
+    assert arranque, "no hay arranque con la sesion guardada"
+    assert "dentro(token)" in arranque[0], f"el arranque no pasa por dentro(): {arranque[0]}"
 
 
 def test_se_puede_dar_de_baja_desde_la_aplicacion():

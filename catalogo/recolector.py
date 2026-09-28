@@ -109,23 +109,39 @@ def _clave_de_indice(nodo) -> str:
 
 
 def acciones_declaradas(fichero: pathlib.Path) -> list[dict]:
-    """Toda entrada de una lista `"actions": [...]` del fichero, con su linea."""
+    """Toda accion declarada en el fichero, con su linea.
+
+    DOS FORMAS, y la segunda se añadio el 2026-09-28. Hasta entonces solo se miraban las listas
+    literales bajo `"actions": [...]`, y ese dia el cockpit saco las suyas a funciones
+    `acciones_magnet(pid)` para que las usaran el feed diario y la cola entera sin duplicarlas. El
+    recolector dejo de verlas y DIEZ contratos se quedaron sin boton de golpe: los botones
+    seguian ahi, pero sin contrato el ejecutor los rechaza, o sea Zeno se quedaba sin poder
+    aprobar nada. Lo dijeron cuatro tests a la vez, no el servidor.
+    """
     arbol = ast.parse(fichero.read_text(encoding="utf-8", errors="replace"))
     fuera = []
+
+    def _mete(lista):
+        for elemento in lista.elts:
+            if isinstance(elemento, ast.Dict):
+                d = _literal(elemento)
+                if isinstance(d, dict) and d:
+                    d["_linea"] = elemento.lineno
+                    fuera.append(d)
+
     for nodo in ast.walk(arbol):
-        if not isinstance(nodo, ast.Dict):
-            continue
-        for clave, valor in zip(nodo.keys, nodo.values):
-            if not (isinstance(clave, ast.Constant) and clave.value == "actions"):
-                continue
-            if not isinstance(valor, ast.List):
-                continue
-            for elemento in valor.elts:
-                if isinstance(elemento, ast.Dict):
-                    d = _literal(elemento)
-                    if isinstance(d, dict) and d:
-                        d["_linea"] = elemento.lineno
-                        fuera.append(d)
+        # Forma 1: escritas dentro de la notificacion.
+        if isinstance(nodo, ast.Dict):
+            for clave, valor in zip(nodo.keys, nodo.values):
+                if (isinstance(clave, ast.Constant) and clave.value == "actions"
+                        and isinstance(valor, ast.List)):
+                    _mete(valor)
+        # Forma 2: una funcion `acciones_*` que las devuelve, para que no haya dos copias.
+        if (isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and nodo.name.startswith("acciones_")):
+            for hijo in ast.walk(nodo):
+                if isinstance(hijo, ast.Return) and isinstance(hijo.value, ast.List):
+                    _mete(hijo.value)
     return fuera
 
 

@@ -331,6 +331,55 @@ def documentacion(consulta: str) -> tuple[list, str, list[str]]:
     return datos.get("conocimiento") or [], datos.get("conocimiento_modo") or "?", []
 
 
+def colas_que_se_abren() -> tuple[dict, list[str]]:
+    """Que colas se pueden abrir enteras, por sistema. Hoy solo las del cockpit.
+
+    Se PREGUNTA en vez de darlo por sabido: Zeno vive fuera y una lista escrita aqui a mano se
+    queda vieja en cuanto el cockpit añade o quita una cola, sin que nada falle.
+    """
+    fuera, fallos = {}, []
+    datos, err = _seguro(COCKPIT, "/aios/colas")
+    if err:
+        fallos.append(f"Zenvrax (colas): {err}")
+    else:
+        fuera["cockpit"] = list(datos.get("colas") or [])
+    # Xrise todavia no tiene esta puerta: sus colas se siguen viendo por el recuento. Se dice
+    # aqui para que el front no tenga que adivinarlo ni ofrecer abrir algo que no se abre.
+    fuera["xrise"] = []
+    return fuera, fallos
+
+
+def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str]:
+    """Los ELEMENTOS de una cola del cockpit, con sus acciones ya cruzadas con el contrato.
+
+    POR QUE EXISTE. `pendiente_completo` da el recuento, y con un numero no se decide nada: Zeno
+    enseñaba "44 posts de X sin publicar" y un enlace de vuelta al cockpit, que es justo lo que el
+    operador queria dejar de abrir.
+
+    Las acciones pasan por el MISMO cruce con el catalogo que las del feed (`_acciones`): sin eso
+    serian botones sin contrato, o sea texto muerto que el ejecutor rechazaria.
+    """
+    datos, err = _seguro(COCKPIT, f"/aios/cola/{cola}?limite={int(limite)}")
+    if err:
+        return [], err
+    indice = _indice_del_catalogo()
+    fuera = []
+    for e in datos.get("elementos") or []:
+        acc = _acciones("cockpit", e.get("actions"), indice)
+        fuera.append({
+            "id": e.get("id"),
+            "negocio": NEGOCIO["cockpit"],
+            "titulo": sin_adornos(e.get("titulo")) or "?",
+            "cuerpo": (e.get("cuerpo") or "").strip(),
+            "cuando": e.get("cuando"),
+            "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
+                          "coste_api": a.coste_api, "url": a.url,
+                          "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible}
+                         for a in acc],
+        })
+    return fuera, ""
+
+
 def pendiente_completo() -> tuple[list[dict], list[str]]:
     """TODO lo que espera una decision, por cola, de los dos negocios.
 
