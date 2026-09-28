@@ -108,6 +108,25 @@ def _seguro(base: str, ruta: str, cabeceras: dict | None = None):
         return None, f"{type(e).__name__} en {ruta}"
 
 
+def sin_adornos(t: str) -> str:
+    """Un texto sin emoji y sin raya larga.
+
+    Vive aqui, fuera de `plan_del_dia`, porque hace falta en tres sitios: el foco, lo urgente y las
+    etiquetas de las acciones ("Ver preview" llega como "<emoji> Ver preview"). Cuando la misma
+    limpieza se copia en tres sitios, se arregla en uno y se olvida en los otros dos.
+
+    EL ORDEN IMPORTA: la raya se sustituye ANTES de quitar lo que no es texto. Al reves, el filtro
+    se la come y deja dos espacios en medio de la frase.
+    """
+    t = str(t or "").strip()
+    t = t.replace("—", ", ").replace("–", ", ")
+    t = "".join(c for c in t if c.isalnum() or c.isspace() or c in ",.;:()[]'\"!?+-/%$&@#")
+    t = " ".join(t.split())
+    for signo in (",", ".", ";", ":"):
+        t = t.replace(" " + signo, signo)
+    return t.strip(" ,-")
+
+
 def _indice_del_catalogo() -> dict:
     """Las acciones del catalogo indexadas por (sistema, etiqueta), que es lo que trae un aviso.
 
@@ -132,9 +151,12 @@ def _acciones(sistema: str, brutas: list, indice: dict) -> list:
     fuera = []
     for a in brutas or []:
         etiqueta = (a.get("label") or "").strip()
+        # El contrato se busca con la etiqueta CRUDA: es la clave del catalogo, que se recolecto
+        # del codigo tal cual. Limpiarla antes rompe la busqueda y la accion se queda sin contrato,
+        # o sea sin poder ejecutarse. Se limpia DESPUES, solo para enseñarla.
         ficha = indice.get((sistema, etiqueta))
         fuera.append(Accion(
-            etiqueta=etiqueta,
+            etiqueta=sin_adornos(etiqueta) or etiqueta,
             op=ficha.op if ficha else None,
             efecto=ficha.efecto if ficha else None,
             coste_api=bool(ficha and ficha.coste_api),
@@ -352,30 +374,22 @@ def plan_del_dia() -> tuple[dict, list[str]]:
     if err:
         return {}, [f"el plan del dia: {err}"]
 
-    def limpia(t):
-        """El titulo, sin el emoji de delante ni la raya larga.
-
-        Los titulos del cockpit vienen como "<emoji> Tarea - La landing...". El emoji es decoracion
-        de otra pantalla y aqui solo roba sitio; la raya larga esta prohibida en todo lo que sale de
-        esta casa, y colarse por un dato leido cuenta igual.
-
-        EL ORDEN IMPORTA: la raya se sustituye ANTES de quitar lo que no es texto. Al reves, el
-        filtro se la comia y dejaba dos espacios en medio de la frase.
-        """
-        t = str(t or "").strip()
-        t = t.replace("—", ", ").replace("–", ", ")
-        # Se conserva letra, numero, espacio y puntuacion normal: eso deja fuera los emoji y los
-        # selectores de variante que los acompañan, sin tener que listarlos uno a uno.
-        t = "".join(c for c in t if c.isalnum() or c.isspace() or c in ",.;:()[]'\"!?+-/%$&@#")
-        t = " ".join(t.split())
-        # "Tarea - La landing" deja "Tarea , La landing": la raya venia con espacio delante. Es el
-        # mismo detalle que ya se arreglo en las respuestas del chat.
-        for signo in (",", ".", ";", ":"):
-            t = t.replace(" " + signo, signo)
-        return t.strip(" ,-")
+    limpia = sin_adornos
 
     plan = datos.get("plan") or []
-    urgentes = [p for p in plan if p.get("severity") == "urgent"]
+    foco_bruto = datos.get("focus") or {}
+    # El foco SALE de la lista de urgentes. Visto en pantalla: la tarjeta grande de "lo primero de
+    # hoy" y la primera linea de "urgente" eran la misma tarea, o sea el sitio mas valioso de la
+    # pantalla gastado en decir dos veces lo mismo.
+    # Se compara por id, y si no hay id, por titulo. Con `p.get("id") != foco.get("id")` a secas,
+    # un plan SIN ids hacia que None coincidiera con None y desaparecieran TODAS las urgentes: el
+    # arreglo de un duplicado se llevaba la lista entera. Lo encontro un test.
+    def es_el_foco(p):
+        if foco_bruto.get("id"):
+            return p.get("id") == foco_bruto["id"]
+        return bool(foco_bruto.get("title")) and p.get("title") == foco_bruto.get("title")
+
+    urgentes = [p for p in plan if p.get("severity") == "urgent" and not es_el_foco(p)]
     cuentas = datos.get("counts") or {}
     foco = datos.get("focus") or {}
     return {

@@ -88,17 +88,21 @@
   .post{font-weight:600;margin-bottom:5px;line-height:1.35}
   .extracto{color:var(--gris);font-size:13px;margin-bottom:11px;white-space:pre-wrap}
   .btns{display:flex;gap:7px;flex-wrap:wrap}
-  .b{border:1px solid var(--linea);background:#1e1e24;color:var(--texto);border-radius:9px;
-     padding:9px 12px;font-size:13px;display:inline-flex;align-items:center;gap:6px;
-     text-decoration:none;cursor:pointer}
+  .b{border:1px solid var(--linea-fuerte);background:#23232a;color:var(--texto);border-radius:10px;
+     padding:11px 15px;font-size:13.5px;font-weight:600;display:inline-flex;align-items:center;
+     gap:7px;text-decoration:none;cursor:pointer;font-family:inherit;min-height:44px;
+     box-sizing:border-box}
   .b.primaria{background:var(--ambar);color:#221a08;border-color:var(--ambar);font-weight:600}
-  .b.gasta{border-color:#4a3a14;background:var(--ambar-suave)}
+  .b.gasta{background:none;border-color:#50302a;color:var(--rojo-claro)}
   .b.sin{border-style:dashed;color:var(--gris)}
   .marca-accion{font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;padding:2px 6px;
                 border-radius:5px}
   .m-mundo{background:#40201c;color:#ffb3aa}
   .m-cuesta{background:var(--ambar-suave);color:#f3c579}
   .vacio{color:var(--gris);text-align:center;padding:40px 10px}
+  /* Cargando NO es un estado vacio: con el relleno de .vacio dejaba medio movil en blanco
+     mientras llegaba la respuesta, y parecia que no habia nada. */
+  .cargando{color:var(--tenue);font-size:12.5px;padding:10px 0}
   .burbujas{display:flex;flex-direction:column;gap:10px}
   .tu,.el{max-width:88%;padding:10px 13px;border-radius:14px;font-size:14px;line-height:1.45;
           white-space:pre-wrap}
@@ -112,10 +116,15 @@
                   padding:11px 14px;color:var(--texto);font-size:16px}
   .enviar{width:36px;height:36px;border-radius:50%;background:var(--ambar);color:#221a08;
           border:0;font-size:17px;font-weight:700;flex:0 0 auto}
-  .fichas{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
-  .ficha{background:#1c1c22;border-radius:20px;padding:7px 13px;font-size:12.5px;
-         color:var(--texto)}
-  .ficha b{font-variant-numeric:tabular-nums}
+  /* FILAS y no fichas: con los titulos reales ("Promos de magnet sin publicar") solo cabia una
+     ficha por linea, o sea cinco filas de una ficha. Una fila con el numero alineado a la
+     izquierda dice lo mismo en la mitad de alto. */
+  .fichas{margin-bottom:8px}
+  .ficha{display:flex;gap:12px;align-items:baseline;padding:9px 0;
+         border-top:1px solid var(--linea);font-size:var(--t3)}
+  .ficha:last-child{border-bottom:1px solid var(--linea)}
+  .ficha b{min-width:30px;text-align:right;font-variant-numeric:tabular-nums;font-size:16px;
+           color:var(--ambar)}
 
   /* La caja de buscar, pensada para el pulgar y no para el raton:
      · font-size 16px OBLIGATORIO. Con menos, iOS hace ZOOM al enfocar y descoloca la pantalla
@@ -496,13 +505,13 @@ function pintaAccion(a, i, j) {
   // abre la confirmación. Y lo que sale al mundo pide el PIN.
   if (!a.op) return `<span class="b sin">${esc(a.etiqueta)} · sin contrato</span>`;
   const marcas = [];
-  if (a.efecto === "publica") marcas.push('<span class="marca-accion m-mundo">sale al mundo</span>');
   if (a.coste_api) marcas.push('<span class="marca-accion m-cuesta">cuesta</span>');
   const texto = `${esc(a.etiqueta)} ${marcas.join(" ")}`;
   if (a.se_puede_abrir)
     return `<a class="b primaria" href="${esc(a.url)}" target="_blank" rel="noopener">${texto}</a>`;
   // Lo que publica NO es el botón primario: el primario es el de abrir y mirar. Que lo irreversible
   // se vea menos llamativo que lo inocente es a propósito.
+  // Lo que publica va en contorno rojo, no en el boton solido: el solido es el de ABRIR y mirar.
   const clase = a.efecto === "publica" ? "b gasta" : "b";
   return `<button class="${clase}" data-hacer="${i}-${j}">${texto}</button>`;
 }
@@ -516,14 +525,14 @@ function pintaColas(colas, total) {
           "</span></div><div class=\"fichas\">";
   for (const c of colas) {
     if (!c.cuantos) continue;
-    h += '<span class="ficha">' + esc(c.titulo) + " <b>" + c.cuantos + "</b></span>";
+    h += '<div class="ficha"><b>' + c.cuantos + "</b><span>" + esc(c.titulo) + "</span></div>";
   }
   return h + "</div>";
 }
 
 async function cargaPendientes() {
   const c = $("#v-pendientes");
-  c.innerHTML = '<div class="vacio">cargando…</div>';
+  c.innerHTML = '<div class="cargando">cargando…</div>';
   try {
     const d = await api("/api/pendientes");
     let html = "";
@@ -537,11 +546,9 @@ async function cargaPendientes() {
       html += '<div class="vacio">nada espera tu OK' +
               ((d.fallos || []).length ? "<br>(con lo que se ha podido leer)" : "") + "</div>";
     } else {
-      const publican = lista.filter(p => p.publica_algo).length;
-      const cuestan = lista.filter(p => p.cuesta_dinero).length;
-      html += `<div class="resumen"><b>${lista.length}</b> ` +
-              (lista.length === 1 ? "cosa espera" : "cosas esperan") + " tu OK · " +
-              `${publican} pueden salir al mundo · ${cuestan} gastan API</div>`;
+      // Aqui iba un "1 cosa espera tu OK" justo debajo del recuento de 113: dos numeros
+      // distintos para la misma pregunta, y el de arriba es el bueno. El feed no cuenta, decide.
+      html += '<div class="apartado">Lo que toca ahora</div>';
       // La lista se guarda: al confirmar hace falta la accion entera, y volver a pedirla al
       // servidor entre proponer y confirmar podria traer otra distinta si algo cambio entremedias.
       pendientesEnPantalla = lista;
@@ -762,7 +769,7 @@ function cargaChat() {
 
 async function cargaHoy() {
   const c = $("#v-hoy");
-  if (!c.innerHTML) c.innerHTML = '<div class="vacio">cargando…</div>';
+  if (!c.innerHTML) c.innerHTML = '<div class="cargando">cargando…</div>';
   try {
     const d = await api("/api/hoy");
     let h = "";
@@ -909,7 +916,7 @@ function pintaNegocio(n) {
 
 async function cargaNegocios() {
   const c = $("#v-negocios");
-  c.innerHTML = '<div class="vacio">cargando…</div>';
+  c.innerHTML = '<div class="cargando">cargando…</div>';
   try {
     const d = await api("/api/negocios");
     let h = "";
@@ -1011,7 +1018,7 @@ function pintaPieDeCuentas(cuentas) {
 
 async function cargaPersonal() {
   const c = $("#v-personal");
-  c.innerHTML = '<div class="vacio">cargando…</div>';
+  c.innerHTML = '<div class="cargando">cargando…</div>';
   let cuentas = [], alias = [], datos = { correos: [], agenda: [], fallos: [] };
   try {
     const r = await Promise.all([api("/api/google/cuentas"), api("/api/personal")]);
@@ -1245,7 +1252,7 @@ async function pintaAgendaExtra() {
 async function buscaHuecos() {
   const caja = $("#cita-huecos");
   const min = Math.max(10, parseInt($("#cita-min").value, 10) || 30);
-  caja.innerHTML = '<div class="vacio">buscando…</div>';
+  caja.innerHTML = '<div class="cargando">buscando…</div>';
   try {
     const d = await api("/api/agenda/huecos?minutos=" + min + "&dias=10");
     const hs = d.huecos || [];

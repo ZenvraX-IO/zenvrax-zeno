@@ -244,3 +244,73 @@ def test_el_titulo_pierde_el_emoji_y_la_raya_larga(monkeypatch):
     for t in (plan["foco"]["titulo"], plan["urgentes"][0]["titulo"]):
         assert "\u2014" not in t and "  " not in t
         assert t == t.strip()
+
+
+def test_la_etiqueta_se_limpia_DESPUES_de_buscar_el_contrato(monkeypatch):
+    """LA TRAMPA. La etiqueta es la clave con la que se busca el contrato en el catalogo, y el
+    catalogo se recolecto del codigo con las etiquetas TAL CUAL, emoji incluido.
+
+    Si se limpiara antes de buscar, la accion se quedaria sin contrato: en pantalla saldria "sin
+    contrato" y dejaria de poder ejecutarse. Se limpia despues, y solo para enseñarla.
+    """
+    buscadas = []
+
+    class Ficha:
+        op, efecto, coste_api = "claire.aprobar", "publica", False
+
+    class Indice(dict):
+        def get(self, clave, por_defecto=None):
+            buscadas.append(clave)
+            return Ficha()
+
+    acciones = lector._acciones(
+        "cockpit", [{"label": "✅ Aprobar y publicar", "url": "https://x/1"}], Indice())
+    assert buscadas == [("cockpit", "✅ Aprobar y publicar")], "se busco con la limpia"
+    assert acciones[0].etiqueta == "Aprobar y publicar", "y se enseña sin el emoji"
+    assert acciones[0].op == "claire.aprobar", "con su contrato intacto"
+
+
+def test_una_etiqueta_que_solo_tiene_emoji_no_se_queda_vacia():
+    """Si la limpieza deja la cadena vacia, un boton sin texto es peor que uno con un emoji."""
+    a = lector._acciones("cockpit", [{"label": "\U0001f440", "url": "https://x/1"}], {})
+    assert a[0].etiqueta == "\U0001f440"
+
+
+def test_el_foco_no_se_repite_en_la_lista_de_urgentes(monkeypatch):
+    """VISTO EN PANTALLA. La tarjeta grande de "lo primero de hoy" y la primera linea de "urgente"
+    eran la misma tarea: el sitio mas valioso de la pantalla gastado en decir dos veces lo mismo.
+    """
+    monkeypatch.setattr(lector, "_seguro", lambda b, r, c=None: (
+        {"focus": {"id": "t1", "title": "La landing inglesa"},
+         "plan": [{"id": "t1", "title": "La landing inglesa", "severity": "urgent"},
+                  {"id": "t2", "title": "Otra cosa", "severity": "urgent"}],
+         "counts": {}}, None))
+    plan, _ = lector.plan_del_dia()
+    assert plan["foco"]["titulo"] == "La landing inglesa"
+    assert [u["titulo"] for u in plan["urgentes"]] == ["Otra cosa"]
+
+
+def test_si_el_foco_no_es_urgente_no_desaparece_ninguna(monkeypatch):
+    """El arreglo no puede comerse una urgente cuando el foco es otra cosa distinta."""
+    monkeypatch.setattr(lector, "_seguro", lambda b, r, c=None: (
+        {"focus": {"id": "dm9", "title": "Un DM"},
+         "plan": [{"id": "t1", "title": "Una", "severity": "urgent"},
+                  {"id": "t2", "title": "Otra", "severity": "urgent"}],
+         "counts": {}}, None))
+    plan, _ = lector.plan_del_dia()
+    assert len(plan["urgentes"]) == 2
+
+
+def test_sin_ids_el_arreglo_del_duplicado_no_se_lleva_la_lista(monkeypatch):
+    """LO ENCONTRO UN TEST, no produccion. Comparando `p["id"] != foco["id"]` a secas, un plan sin
+    ids hacia que None coincidiera con None y desaparecieran TODAS las urgentes: el arreglo de un
+    duplicado se llevaba la lista entera."""
+    monkeypatch.setattr(lector, "_seguro", lambda b, r, c=None: (
+        {"focus": {"title": "Una"},
+         "plan": [{"title": "Una", "severity": "urgent"},
+                  {"title": "Otra", "severity": "urgent"},
+                  {"title": "Y otra", "severity": "urgent"}],
+         "counts": {}}, None))
+    plan, _ = lector.plan_del_dia()
+    # Se va la que es el foco, por titulo, y se quedan las otras dos.
+    assert [u["titulo"] for u in plan["urgentes"]] == ["Otra", "Y otra"]
