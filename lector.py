@@ -38,6 +38,28 @@ ORG = os.environ.get("ZENO_ORG", "gutlyn")
 
 NEGOCIO = {"cockpit": "Zenvrax", "xrise": "GutLyn"}
 
+#: DONDE SE ABREN LAS COSAS, que NO es de donde se leen. Por dentro Zeno habla con
+#: `http://cockpit-api:8802`, una direccion de la red de Docker que un navegador no puede abrir; y
+#: los avisos traen la ruta RELATIVA ("/ops/tareas"). Puesta tal cual en un enlace, el navegador la
+#: resuelve contra zeno.zenvrax.com, cae en la propia aplicacion y no pasa nada: el operador
+#: pulsaba y no iba a ningun sitio.
+WEB = {
+    "cockpit": os.environ.get("ZENO_COCKPIT_WEB", "https://cockpit.zenvrax.com"),
+    "xrise": os.environ.get("ZENO_XRISE_WEB", "https://xrise.zenvrax.com"),
+}
+
+
+def enlaza(sistema: str, url: str) -> str:
+    """Una direccion que un navegador pueda abrir.
+
+    Lo que ya es absoluto se deja intacto: las acciones de las colas son webhooks de n8n con su
+    dominio puesto, y prefijarlas las romperia.
+    """
+    url = (url or "").strip()
+    if not url or url.startswith(("http://", "https://", "mailto:")):
+        return url
+    return WEB.get(sistema, "").rstrip("/") + "/" + url.lstrip("/")
+
 
 class SinClave(RuntimeError):
     """Zeno no tiene con que leer. Se dice en vez de devolver listas vacias, que se leerian como
@@ -242,7 +264,7 @@ def _aviso_suelto(sistema: str, n: dict) -> dict:
         "negocio": NEGOCIO[sistema],
         "titulo": sin_adornos(n.get("title") or n.get("label") or ""),
         "grave": (n.get("severity") or n.get("tone")) in ("bad", "urgent", "error"),
-        "url": n.get("url") or n.get("link") or "",
+        "url": enlaza(sistema, n.get("url") or n.get("link") or ""),
     }
 
 
@@ -441,15 +463,15 @@ def plan_del_dia() -> tuple[dict, list[str]]:
     foco = datos.get("focus") or {}
     return {
         "foco": {"titulo": limpia(foco.get("title")), "tipo": foco.get("kind"),
-                 "severidad": foco.get("severity"), "url": foco.get("url"),
+                 "severidad": foco.get("severity"), "url": enlaza("cockpit", foco.get("url")),
                  "cuerpo": (foco.get("body") or "")[:300]} if foco.get("title") else None,
         "urgentes": [{"titulo": limpia(p.get("title")), "tipo": p.get("kind"),
-                      "url": p.get("url")} for p in urgentes],
+                      "url": enlaza("cockpit", p.get("url"))} for p in urgentes],
         # El resto del plan viaja para que el resumen escrito lo tenga en cuenta, aunque la pantalla
         # solo enseñe lo urgente: decidir bien necesita ver todo, enseñar bien necesita ver poco.
         "resto": [{"titulo": limpia(p.get("title")), "tipo": p.get("kind"),
-                   "severidad": p.get("severity"), "url": p.get("url")}
-                  for p in plan if p.get("severity") != "urgent"],
+                   "severidad": p.get("severity"), "url": enlaza("cockpit", p.get("url"))}
+                  for p in plan if p.get("severity") != "urgent" and not es_el_foco(p)],
         "cuantas_pendientes": cuentas.get("pending"),
         "cuantas_urgentes": cuentas.get("urgent", len(urgentes)),
     }, []
@@ -471,7 +493,7 @@ def alertas() -> tuple[list[dict], list[str]]:
             if a.get("sev") in ("warn", "bad"):
                 fuera.append({"negocio": a.get("negocio") or "Zenvrax IO",
                               "texto": a.get("texto"), "grave": a.get("sev") == "bad",
-                              "donde": a.get("to")})
+                              "donde": enlaza("cockpit", a.get("to"))})
     xr, f2 = _seguro(XRISE, "/dashboard/executive", {"X-Zeno-Org": ORG})
     if f2:
         fallos.append(f"los avisos de GutLyn: {f2}")
@@ -480,5 +502,6 @@ def alertas() -> tuple[list[dict], list[str]]:
             if a.get("tone") in ("warn", "bad"):
                 fuera.append({"negocio": "GutLyn+",
                               "texto": f"{a.get('label')}: {a.get('value')}",
-                              "grave": a.get("tone") == "bad", "donde": a.get("link")})
+                              "grave": a.get("tone") == "bad",
+                              "donde": enlaza("xrise", a.get("link"))})
     return fuera, fallos

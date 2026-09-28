@@ -21,6 +21,11 @@ services:
       # Por dentro de la red: el cockpit responde en 8802 sin pasar por Caddy.
       ZENO_COCKPIT_URL: http://cockpit-api:8802
       ZENO_XRISE_URL: http://ecomops-api:8803
+      # DONDE SE ABREN las cosas, que NO es de donde se leen. Las dos de arriba son direcciones de
+      # la red de Docker y un navegador no puede abrirlas; los avisos ademas traen la ruta
+      # relativa, que sin prefijo cae en la propia aplicacion de Zeno y no lleva a ningun sitio.
+      ZENO_COCKPIT_WEB: ${ZENO_COCKPIT_WEB:-https://cockpit.zenvrax.com}
+      ZENO_XRISE_WEB: ${ZENO_XRISE_WEB:-https://xrise.zenvrax.com}
       ZENO_READ_KEY: ${ZENO_READ_KEY}
       ZENO_ORG: ${ZENO_ORGS:-gutlyn}
       # Quien puede entrar. Vacio = cualquiera con sesion valida del cockpit; en produccion, el

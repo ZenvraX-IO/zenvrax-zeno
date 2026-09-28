@@ -384,3 +384,53 @@ def test_un_aviso_sin_titulo_no_ocupa_una_linea_vacia(monkeypatch):
     monkeypatch.setattr(lector, "_seguro",
                         lambda b, r, c=None: ({"rows": [{"severity": "info"}]}, None))
     assert lector.pendientes()[1] == []
+
+
+# ---------------------------------------------------------------- los enlaces se pueden abrir
+
+def test_una_ruta_relativa_se_convierte_en_una_direccion_abrible():
+    """EL OPERADOR LO DIJO ASI: "cuando le das click no te lleva a la pagina". Los avisos traen la
+    ruta RELATIVA del sistema ("/ops/tareas"). En un enlace dentro de zeno.zenvrax.com, el
+    navegador la resuelve contra Zeno, cae en la propia aplicacion y no pasa nada.
+
+    Y ojo con la confusion de fondo: por dentro Zeno habla con `http://cockpit-api:8802`, que es una
+    direccion de la red de Docker y un navegador NO puede abrir. De donde se LEE y donde se ABRE son
+    dos cosas distintas.
+    """
+    assert lector.enlaza("cockpit", "/ops/tareas") == "https://cockpit.zenvrax.com/ops/tareas"
+    assert lector.enlaza("xrise", "/contenido") == "https://xrise.zenvrax.com/contenido"
+    assert lector.enlaza("cockpit", "ops/tareas") == "https://cockpit.zenvrax.com/ops/tareas"
+
+
+def test_lo_que_ya_es_absoluto_no_se_toca():
+    """Las acciones de las colas son webhooks de n8n con su dominio puesto. Prefijarlas las
+    romperia, y son justo las que publican."""
+    w = "https://n8n.zenvrax.com/webhook/linkedin-approve?id=42"
+    assert lector.enlaza("cockpit", w) == w
+    assert lector.enlaza("cockpit", "") == ""
+    assert lector.enlaza("cockpit", None) == ""
+
+
+def test_el_plan_del_dia_sale_con_las_direcciones_puestas(monkeypatch):
+    monkeypatch.setattr(lector, "_seguro", lambda b, r, c=None: (
+        {"focus": {"id": "t1", "title": "Una", "url": "/ops/tareas"},
+         "plan": [{"id": "t1", "title": "Una", "severity": "urgent", "url": "/ops/tareas"},
+                  {"id": "t2", "title": "Otra", "severity": "urgent", "url": "/ops/tareas"},
+                  {"id": "d1", "title": "Un DM", "severity": "warn", "url": "/crm/dms"}],
+         "counts": {}}, None))
+    plan, _ = lector.plan_del_dia()
+    assert plan["foco"]["url"].startswith("https://cockpit.zenvrax.com/")
+    assert plan["urgentes"][0]["url"].startswith("https://cockpit.zenvrax.com/")
+    assert plan["resto"][0]["url"] == "https://cockpit.zenvrax.com/crm/dms"
+
+
+def test_el_foco_tampoco_se_repite_en_el_resto_del_plan(monkeypatch):
+    """Se quitaba de las urgentes pero no del resto: si el foco no fuera urgente, volveria a salir
+    abajo y el sitio mas valioso de la pantalla seguiria diciendo dos veces lo mismo."""
+    monkeypatch.setattr(lector, "_seguro", lambda b, r, c=None: (
+        {"focus": {"id": "d1", "title": "Un DM"},
+         "plan": [{"id": "d1", "title": "Un DM", "severity": "warn"},
+                  {"id": "d2", "title": "Otro DM", "severity": "warn"}],
+         "counts": {}}, None))
+    plan, _ = lector.plan_del_dia()
+    assert [r["titulo"] for r in plan["resto"]] == ["Otro DM"]

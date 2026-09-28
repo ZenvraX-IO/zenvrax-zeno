@@ -801,10 +801,15 @@ async function cargaHoy() {
 
     const plan = d.plan || {};
     if (plan.foco) {
-      h += '<div class="foco"><div class="q">Lo primero de hoy</div><div class="t">' +
+      // El foco es un ENLACE cuando trae dirección. Era un div: la cosa más importante del día,
+      // en la tarjeta más grande de la pantalla, y al pulsarla no pasaba nada.
+      h += (plan.foco.url
+              ? '<a class="foco" href="' + esc(plan.foco.url) + '" target="_blank" rel="noopener">'
+              : '<div class="foco">') +
+           '<div class="q">Lo primero de hoy</div><div class="t">' +
            esc(plan.foco.titulo) + "</div>";
       if (plan.foco.cuerpo) h += '<div class="c">' + esc(plan.foco.cuerpo) + "</div>";
-      h += "</div>";
+      h += plan.foco.url ? "</a>" : "</div>";
     }
 
     const urg = plan.urgentes || [];
@@ -817,8 +822,23 @@ async function cargaHoy() {
              (u.url ? "</a>" : "</div>");
     }
 
-    if (!plan.foco && !urg.length && !(d.fallos || []).length)
-      h += '<div class="vacio">Nada urgente hoy.<br>Lo que espera tu OK está en Pendiente.</div>';
+    // EL RESTO DEL DIA. Antes solo salian el foco y las tres urgentes, y el operador lo dijo:
+    // "tan solo sale en trabajo y no hoy". El plan del cockpit trae ademas los DMs, los leads y lo
+    // que toca hoy, y eso es justo lo que se espera ver al abrir por la mañana.
+    const resto = plan.resto || [];
+    if (resto.length) {
+      h += '<div class="apartado">También hoy<span style="flex:1"></span>' +
+           '<span style="color:var(--apagado)">' + resto.length + "</span></div>";
+      for (const r of resto)
+        h += (r.url ? '<a class="ficha" href="' + esc(r.url) + '" target="_blank" rel="noopener" ' +
+                      'style="text-decoration:none;color:inherit">' : '<div class="ficha">') +
+             '<span style="width:3px;height:14px;border-radius:2px;flex:0 0 auto;background:' +
+             (r.severidad === "warn" ? "var(--ambar)" : "var(--linea-fuerte)") + '"></span>' +
+             "<span>" + esc(r.titulo) + "</span>" + (r.url ? "</a>" : "</div>");
+    }
+
+    if (!plan.foco && !urg.length && !resto.length && !(d.fallos || []).length)
+      h += '<div class="vacio">Nada urgente hoy.<br>Lo que espera tu OK está en Trabajo.</div>';
 
     c.innerHTML = h + '<div id="caja-avisos"></div>';
     pintaAvisos();
