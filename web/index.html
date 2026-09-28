@@ -729,7 +729,8 @@ function pintaColas(colas, total) {
           "</span></div><div class=\"fichas\">";
   for (const c of colas) {
     if (!c.cuantos) continue;
-    const abrible = (colasAbribles.cockpit || []).includes(c.cola) && c.negocio !== "GutLyn+";
+    const abribles = [...(colasAbribles.cockpit || []), ...(colasAbribles.xrise || [])];
+    const abrible = abribles.includes(c.cola);
     h += abrible
       ? '<button class="ficha abrible" data-cola="' + esc(c.cola) + '"><b>' + c.cuantos +
         "</b><span>" + esc(c.titulo) + '</span><span class="flecha">›</span></button>'

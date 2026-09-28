@@ -185,3 +185,12 @@ def test_no_se_manda_al_cockpit_lo_que_tiene_boton_para_ir():
     hace es lo contrario de lo que se venia a arreglar."""
     h = _html()
     assert "!pintados && !e.donde && !e.copiar" in h
+
+
+def test_las_colas_de_los_dos_negocios_se_pueden_abrir():
+    """Estuvo escrito a mano que las de GutLyn no se abren, que era verdad el dia que se escribio
+    y dejo de serlo al montar la misma puerta en Xrise, sin que nada avisara. Ahora se mira lo
+    que dice cada sistema."""
+    h = _html()
+    assert 'c.negocio !== "GutLyn+"' not in h, "se excluye a GutLyn a mano"
+    assert "colasAbribles.xrise" in h, "no se miran las colas de GutLyn"
