@@ -737,6 +737,7 @@ async function cargaPendientes() {
     // El recuento COMPLETO va arriba del todo: el feed de abajo da lo que toca hoy, y sin esto
     // parecía que solo había una cosa pendiente cuando había 113.
     html += pintaColas(d.colas || [], d.total_pendiente);
+    html += '<div id="colas-de-hoy"></div>';
     const lista = d.pendientes || [];
     if (!lista.length) {
       html += '<div class="vacio">nada espera tu OK' +
@@ -949,7 +950,29 @@ async function busca() {
       }
     }
     c.innerHTML = html;
+    pintaColasDeHoy();
   } catch (e) { c.innerHTML = `<div class="aviso-fallo">${esc(e.message)}</div>`; }
+}
+
+//: El trabajo del dia que se hace EN otra aplicacion: los DMs de LinkedIn y el engagement de X.
+//: Se piden aparte porque no son contenido en una tabla, y su numero cambia cada dia.
+const COLAS_DE_HOY = [["dms", "DMs y respuestas de LinkedIn"], ["engagement", "Cuentas de X para responder"]];
+
+async function pintaColasDeHoy() {
+  const caja = $("#colas-de-hoy");
+  if (!caja) return;
+  const trozos = await Promise.all(COLAS_DE_HOY.map(async ([cola, titulo]) => {
+    try {
+      const d = await api("/api/cola/" + cola + "?limite=50");
+      if (!d.cuantos) return "";
+      return '<button class="ficha abrible" data-cola="' + cola + '"><b>' + d.cuantos +
+             "</b><span>" + esc(titulo) + '</span><span class="flecha">›</span></button>';
+    } catch (e) { return ""; }
+  }));
+  const hay = trozos.filter(Boolean).join("");
+  caja.innerHTML = hay
+    ? '<div class="apartado">El trabajo de hoy</div><div class="fichas">' + hay + "</div>"
+    : "";
 }
 
 // ---------------------------------------------------------------- chat (apagado)
@@ -2138,7 +2161,7 @@ if (Voz.hay) {
 $("#btn-chat").onclick = () => abreCapa("capa-chat");
 document.addEventListener("click", (e) => {
   const f = e.target.closest("[data-cola]");
-  if (f) abreCola(f.dataset.cola, f.querySelector("span").textContent);
+  if (f) abreCola(f.dataset.cola, f.querySelectorAll("span")[0].textContent);
 });
 $("#btn-buscar").onclick = () => abreCapa("capa-buscar");
 document.querySelectorAll("[data-cerrar]").forEach(b =>

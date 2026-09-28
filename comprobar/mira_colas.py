@@ -46,9 +46,9 @@ async def main():
             return 1
 
         print()
-        print("2) SE ABRE LA MÁS GRANDE")
+        print("2) SE ABRE LA DE DMs")
         # La de X, que es la de 44.
-        cual = pag.locator('[data-cola="x"]')
+        cual = pag.locator('[data-cola="dms"]')
         if not await cual.count():
             cual = pag.locator("[data-cola]").first
         await cual.click()
@@ -57,7 +57,9 @@ async def main():
         print("   elementos que salen:", tarjetas)
         print("   título de la capa:", await pag.locator("#cola-titulo").inner_text())
         botones = await pag.locator("#cola-cuerpo [data-cola-accion]").count()
-        print("   botones de acción:", botones)
+        print("   botones de marcar :", botones)
+        print("   enlaces de ir     :", await pag.locator('#cola-cuerpo a.b.primaria').count())
+        print("   botones de copiar :", await pag.locator("#cola-cuerpo [data-copiar]").count())
         await pag.screenshot(path=str(FUERA / "colas-abierta.png"))
 
         print()
