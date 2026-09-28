@@ -123,8 +123,7 @@
   .ficha{display:flex;gap:12px;align-items:baseline;padding:9px 0;
          border-top:1px solid var(--linea);font-size:var(--t3)}
   .ficha:last-child{border-bottom:1px solid var(--linea)}
-  .ficha b{min-width:30px;text-align:right;font-variant-numeric:tabular-nums;font-size:16px;
-           color:var(--ambar)}
+  .ficha b{min-width:30px;text-align:right;font-variant-numeric:tabular-nums;font-size:16px}
 
   /* La caja de buscar, pensada para el pulgar y no para el raton:
      · font-size 16px OBLIGATORIO. Con menos, iOS hace ZOOM al enfocar y descoloca la pantalla
@@ -183,10 +182,10 @@
           padding:7px 13px;font-size:12.5px;color:var(--gris);cursor:pointer;min-height:34px}
   .filtro.on{border-color:var(--ambar);color:var(--ambar);background:var(--ambar-suave)}
   .filtro b{color:inherit;font-weight:600}
-  .correo{display:block;text-decoration:none;color:inherit;background:var(--carbon);
-          border:1px solid var(--linea);border-radius:11px;padding:11px 12px;margin-bottom:9px;
-          min-height:44px}
-  .correo:active{background:#1e1e24}
+  .correo{display:block;text-decoration:none;color:inherit;padding:12px 0;
+          border-top:1px solid var(--linea);min-height:44px}
+  .correo:last-of-type{border-bottom:1px solid var(--linea)}
+  .correo:active{background:#141418}
   .correo .de{display:flex;gap:8px;align-items:baseline;margin-bottom:4px}
   .correo .de b{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;
                 white-space:nowrap;flex:1;min-width:0}
@@ -195,10 +194,10 @@
   .correo .as{font-size:14.5px;line-height:1.35;margin-bottom:4px}
   .correo .re{color:var(--gris);font-size:12.5px;line-height:1.4;
               display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .cita{display:flex;gap:11px;text-decoration:none;color:inherit;background:var(--carbon);
-        border:1px solid var(--linea);border-left:3px solid var(--ambar);border-radius:11px;
-        padding:11px 12px;margin-bottom:9px;min-height:44px}
-  .cita .h{font-size:13px;font-weight:600;color:var(--ambar);flex:0 0 52px;
+  .cita{display:flex;gap:14px;text-decoration:none;color:inherit;padding:11px 0;
+        border-top:1px solid var(--linea);min-height:44px}
+  .cita:last-of-type{border-bottom:1px solid var(--linea)}
+  .cita .h{font-size:13.5px;font-weight:600;color:var(--apagado);flex:0 0 52px;text-align:right;
            font-variant-numeric:tabular-nums}
   .cita .d{flex:1;min-width:0}
   .cita .d b{display:block;font-size:14.5px;font-weight:600;line-height:1.3}
@@ -1048,7 +1047,10 @@ async function cargaPersonal() {
   }
 
   const agenda = datos.agenda || [];
-  html += '<div class="apartado">Agenda</div><div id="agenda-extra"></div>';
+  html += '<div class="apartado">Agenda<span style="flex:1"></span>' +
+          '<button id="nueva-cita" style="background:none;border:0;color:var(--ambar);' +
+          'font-size:12.5px;cursor:pointer;font-family:inherit;padding:4px 0">+ nueva</button>' +
+          '</div><div id="agenda-extra"></div>';
   html += '<div class="apartado">Próximas citas · 14 días</div>';
   if (!agenda.length) html += '<div class="vacio">nada en las próximas dos semanas</div>';
   for (const a of agenda) {
@@ -1231,7 +1233,7 @@ async function pintaAgendaExtra() {
   const caja = $("#agenda-extra");
   if (!caja) return;
   caja.innerHTML =
-    '<div class="nueva">' +
+    '<div class="nueva" id="caja-nueva-cita" hidden>' +
     '<input id="cita-titulo" placeholder="de qué es la cita" autocomplete="off">' +
     '<input id="cita-con" placeholder="invitados, separados por coma (opcional)" ' +
     'autocomplete="off" inputmode="email">' +
@@ -1240,6 +1242,14 @@ async function pintaAgendaExtra() {
     "Buscar hueco</button></div>" +
     '<div id="cita-huecos"></div></div><div id="cita-propuesta"></div>';
   $("#cita-buscar").onclick = buscaHuecos;
+  // El formulario nace escondido: se abre desde "+ nueva". Crear una cita se hace de vez en
+  // cuando, y tenerlo siempre abierto gastaba un tercio de la pantalla que mas se mira.
+  const abrir = $("#nueva-cita");
+  if (abrir) abrir.onclick = () => {
+    const c = $("#caja-nueva-cita");
+    c.hidden = !c.hidden;
+    if (!c.hidden) $("#cita-titulo").focus();
+  };
 
   // Los choques se piden aparte: son el aviso, y no dependen de que se vaya a crear nada.
   try {
