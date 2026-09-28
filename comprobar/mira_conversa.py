@@ -85,9 +85,18 @@ async def main():
 
         print()
         print("3) UNA ORDEN CLARA, Y SE DICE QUE SI: tiene que cerrarla de verdad")
-        dicho, burbujas = await conversacion(["cierra lo del zapato azul", "si, hazlo", ""], espera=14000)
-        print("   Zeno dice:", " | ".join(d[:70] for d in dicho) or "(nada)")
-        print("   ultima burbuja:", burbujas[-1][:70] if burbujas else "(ninguna)")
+        # OJO: este paso necesita que exista una tarea de prueba llamada asi. Si no existe, la
+        # orden no encaja, el "si, hazlo" cae al chat como si fuera una pregunta y GASTA sin que
+        # nadie lo haya autorizado. Paso de verdad: 0,0017 USD en un ensayo que se creia gratis.
+        if os.environ.get("PERMITIR_GASTO_API") != "1":
+            print("   saltado: sin la tarea de prueba creada, esto acabaria preguntando al chat")
+            print("   (créala primero, o pásalo con el permiso de gasto delante)")
+            dicho, burbujas = [], []
+        else:
+            dicho, burbujas = await conversacion(["cierra lo del zapato azul", "si, hazlo", ""], espera=14000)
+        if dicho or burbujas:
+            print("   Zeno dice:", " | ".join(d[:70] for d in dicho) or "(nada)")
+            print("   ultima burbuja:", burbujas[-1][:70] if burbujas else "(ninguna)")
 
         print()
         # El paso 4 es el UNICO que gasta: una pregunta al chat es una llamada a Haiku. Los dos de
