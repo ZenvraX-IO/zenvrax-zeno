@@ -1047,11 +1047,10 @@ async function cargaPersonal() {
   }
 
   const agenda = datos.agenda || [];
-  html += '<div class="apartado">Agenda<span style="flex:1"></span>' +
+  html += '<div class="apartado">Próximas citas · 14 días<span style="flex:1"></span>' +
           '<button id="nueva-cita" style="background:none;border:0;color:var(--ambar);' +
           'font-size:12.5px;cursor:pointer;font-family:inherit;padding:4px 0">+ nueva</button>' +
           '</div><div id="agenda-extra"></div>';
-  html += '<div class="apartado">Próximas citas · 14 días</div>';
   if (!agenda.length) html += '<div class="vacio">nada en las próximas dos semanas</div>';
   for (const a of agenda) {
     html += '<div class="cita"><span class="h">' + esc(horaCorta(a.cuando, a.todo_el_dia)) +
