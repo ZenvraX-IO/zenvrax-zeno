@@ -46,9 +46,9 @@ async def main():
             return 1
 
         print()
-        print("2) SE ABRE LA DE DMs")
+        print("2) SE ABRE LA DE CLAIRE")
         # La de X, que es la de 44.
-        cual = pag.locator('[data-cola="dms"]')
+        cual = pag.locator('[data-cola="claire"]')
         if not await cual.count():
             cual = pag.locator("[data-cola]").first
         await cual.click()
