@@ -70,6 +70,15 @@ def test_se_ve_que_el_microfono_esta_abierto():
         "la señal se enciende o no se apaga")
 
 
+def test_el_boton_que_escucha_no_se_mueve():
+    """Latia con transform:scale, o sea el objetivo del dedo crecia y encogia mientras intentas
+    volver a pulsarlo para parar. El navegador de prueba no consiguio pulsarlo en 30 segundos. El
+    halo puede latir; la caja del boton, no."""
+    regla = re.search(r"@keyframes late\{([^@]+?)\}\s", _html(), re.S).group(1)
+    assert "transform" not in regla, "la animacion mueve el boton: el dedo persigue un blanco movil"
+    assert "box-shadow" in regla
+
+
 def test_el_boton_no_se_enseña_si_el_navegador_no_sabe_escuchar():
     """Firefox no lo tiene. Un boton que no puede funcionar es peor que no tenerlo."""
     h = _html()

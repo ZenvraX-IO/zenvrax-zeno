@@ -151,8 +151,12 @@
          display:flex;align-items:center;justify-content:center}
   .micro[hidden]{display:none}
   .micro.oyendo{background:var(--ambar);border-color:var(--ambar);color:#221a08}
-  .micro.oyendo{animation:late 1.1s ease-in-out infinite}
-  @keyframes late{0%,100%{transform:scale(1)}50%{transform:scale(1.09)}}
+  /* El halo late, NO el boton. Con `transform:scale` el boton crecia y encogia, o sea el
+     objetivo del dedo se movia mientras intentas volver a pulsarlo para parar. Se vio en el
+     navegador de prueba, que no consiguio pulsarlo en 30 segundos por no quedarse quieto. */
+  .micro.oyendo{animation:late 1.3s ease-in-out infinite}
+  @keyframes late{0%,100%{box-shadow:0 0 0 0 rgba(240,168,48,.55)}
+                  50%{box-shadow:0 0 0 7px rgba(240,168,48,0)}}
   @media (prefers-reduced-motion: reduce){ .micro.oyendo{animation:none} }
   /* Lo que se va oyendo, en gris y en cursiva, para que no se confunda con lo ya escrito. */
   .oyendo-texto{font-size:12.5px;color:var(--gris);font-style:italic;padding:0 13px 8px;
