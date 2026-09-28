@@ -13,6 +13,41 @@ from .contrato import ABRE, CAMBIA_ESTADO, PUBLICA, Contrato
 
 CONTRATOS: dict[str, Contrato] = {
 
+    # ---------------- El trabajo del dia: outreach de LinkedIn y engagement de X ----------------
+    #
+    # Declaradas el 2026-09-28, cuando el operador pidio poder marcarlas desde el movil sin abrir
+    # el cockpit. Las cinco COMPARTEN una cosa que las hace seguras: el mensaje se escribe y se
+    # manda EN LinkedIn o EN X, a mano. Ninguna de estas manda nada a nadie: solo anotan en que
+    # punto esta cada prospecto o cada cuenta.
+    #
+    # Por eso ninguna es `publica` aunque hablen de mensajes enviados: lo que ya salio, salio, y
+    # esto es el cuaderno donde se apunta.
+    "cockpit|POST|/marketing/linkedin/{pid}/mark-contacted||✓ Nota enviada": Contrato(
+        op="dm.nota_enviada",
+        que_hace="Anota que ya se mando la solicitud de conexion con su nota, a mano en LinkedIn",
+        efecto=CAMBIA_ESTADO, reversible=True,
+        guarda="consume cuota del dia (15): el propio cockpit deja de ofrecer mas cuando se agota"),
+    "cockpit|POST|/marketing/linkedin/{pid}/connected||🤝 Conectó": Contrato(
+        op="dm.acepto",
+        que_hace="Anota que el prospecto acepto la conexion, y arranca su arco a los dos dias",
+        efecto=CAMBIA_ESTADO, reversible=True,
+        guarda="no escribe a nadie: el primer mensaje del arco aparece dos dias despues"),
+    "cockpit|PATCH|/marketing/linkedin/{pid}/arc|arc_stage=0|✓ Mensaje enviado": Contrato(
+        op="dm.avanzar_arco",
+        que_hace="Anota hasta que mensaje del arco se ha enviado, y programa el siguiente",
+        efecto=CAMBIA_ESTADO, reversible=True,
+        guarda="tope de 15 avances al dia; el mensaje se copia y se pega en LinkedIn a mano"),
+    "cockpit|POST|/marketing/x-targets/{tid}/mark-engaged||✓ Respondí": Contrato(
+        op="x.ya_respondi",
+        que_hace="Anota que ya se respondio a esa cuenta hoy, y sale del recordatorio",
+        efecto=CAMBIA_ESTADO, reversible=True,
+        guarda="no escribe en X: el comentario se publica alli a mano"),
+    "cockpit|POST|/marketing/x-targets/{tid}/skip-today||⤫ Saltar hoy": Contrato(
+        op="x.saltar_hoy",
+        que_hace="Esconde esa cuenta hasta mañana sin contarla como respondida",
+        efecto=CAMBIA_ESTADO, reversible=True,
+        guarda="ninguna, y no hace falta: vuelve a salir mañana"),
+
     # ---------------- COCKPIT, lo que sale al mundo ----------------
     "cockpit|GET|{N8N_PUBLIC}/webhook/linkedin-approve?id={pid}||✅ Aprobar": Contrato(
         op="linkedin.aprobar_y_publicar",

@@ -660,7 +660,12 @@ async function abreCola(cola, titulo) {
            (e.cuando ? ' <span style="color:var(--apagado)">' + esc(e.cuando) + "</span>" : "") +
            "</div><div class=\"post\">" + esc(e.titulo) + "</div>" +
            (e.cuerpo ? '<div class="extracto">' + esc(e.cuerpo) + "</div>" : "") +
-           '<div class="btns">';
+           '<div class="btns">' +
+           // El trio que cierra el circulo: IR al sitio, COPIAR el texto y MARCAR. Copiar va
+           // antes que marcar a proposito: es el orden en que se hace.
+           (e.donde ? '<a class="b primaria" href="' + esc(e.donde) + '" target="_blank" ' +
+                      'rel="noopener">Ir y responder</a>' : "") +
+           (e.copiar ? '<button class="b" data-copiar="' + i + '">Copiar</button>' : "");
       let pintados = 0;
       (e.acciones || []).forEach((a, j) => {
         if (a.se_puede_abrir) {
@@ -678,6 +683,20 @@ async function abreCola(cola, titulo) {
       h += "</div></div>";
     });
     $("#cola-cuerpo").innerHTML = h + '<div class="confirmar-aqui"></div>';
+    $("#cola-cuerpo").querySelectorAll("[data-copiar]").forEach(b => b.onclick = async () => {
+      const texto = colaEnPantalla[Number(b.dataset.copiar)].copiar || "";
+      try {
+        await navigator.clipboard.writeText(texto);
+        b.textContent = "Copiado";
+      } catch (e) {
+        // En iOS el portapapeles falla si no lo pide un gesto, y a veces falla igual. Antes de
+        // dejar al operador sin el texto, se enseña para que lo seleccione a mano.
+        b.textContent = "no he podido, míralo abajo";
+        b.closest(".tarjeta").insertAdjacentHTML("beforeend",
+          '<textarea class="campo" rows="4" readonly>' + esc(texto) + "</textarea>");
+      }
+      setTimeout(() => { if (b.textContent === "Copiado") b.textContent = "Copiar"; }, 2500);
+    });
     $("#cola-cuerpo").querySelectorAll("[data-cola-accion]").forEach(b => b.onclick = () => {
       const [i, j] = b.dataset.colaAccion.split("-").map(Number);
       // El MISMO camino que en el resto: propone, enseña lo que va a pasar y espera el OK. Una

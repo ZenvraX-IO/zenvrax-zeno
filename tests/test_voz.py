@@ -160,3 +160,32 @@ def test_lo_dictado_se_añade_y_no_pisa_lo_escrito():
     """Puedes escribir media frase y dictar el resto. Pisar el campo borraria lo tecleado sin
     avisar, que es de las cosas que no se perdonan en un movil."""
     assert "campo.value.trim() + \" \"" in _html(), "lo dictado sustituye en vez de añadirse"
+
+
+# --------------------------------------------------------------------------------------------
+# Las colas de trabajo diario: ir, copiar y marcar.
+#
+# EL CASO (2026-09-28). El operador: que los DMs del dia salgan en Zeno "para poderlos marcar
+# desde esa aplicacion y no ir al cockpit". El trabajo se hace EN LinkedIn o EN X, asi que hacen
+# falta las tres cosas: el enlace al sitio, el texto, y el boton de anotarlo.
+# --------------------------------------------------------------------------------------------
+
+def test_una_cola_de_trabajo_lleva_ir_copiar_y_marcar():
+    h = _html()
+    trozo = h[h.index("async function abreCola("):]
+    trozo = trozo[:trozo.index("async function conversa()")]
+    assert "Ir y responder" in trozo, "no hay enlace al sitio donde se hace el trabajo"
+    assert "data-copiar=" in trozo, "no se puede copiar el texto"
+    assert "data-cola-accion=" in trozo, "no se puede marcar"
+    assert trozo.index("Ir y responder") < trozo.index("data-copiar"), (
+        "copiar sale antes que ir: no es el orden en que se hace")
+
+
+def test_si_el_portapapeles_falla_el_texto_no_se_pierde():
+    """En iOS el portapapeles falla si no lo pide un gesto, y a veces falla igual. Dejar al
+    operador sin el texto y con un boton que no hizo nada es peor que no tener boton."""
+    h = _html()
+    trozo = h[h.index('querySelectorAll("[data-copiar]")'):]
+    trozo = trozo[:trozo.index("[data-cola-accion]")]
+    assert "catch" in trozo and "textarea" in trozo, (
+        "si copiar falla, el texto no se enseña en ningún sitio")

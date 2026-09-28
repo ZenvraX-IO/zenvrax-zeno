@@ -163,7 +163,7 @@ def test_se_sabe_cuales_no_tienen_ninguna_guarda():
     rojo en CI, donde el repo de Xrise no esta y por tanto faltan sus 5: un guard que falla por que
     falte un repo hermano acaba desactivado, y entonces ya no guarda nada.
     """
-    esperado = {"cockpit": 6, "xrise": 5}
+    esperado = {"cockpit": 7, "xrise": 5}
     ausentes = sistemas_ausentes()
     for sistema, cuantas in esperado.items():
         if sistema in ausentes:

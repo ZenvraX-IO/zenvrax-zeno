@@ -403,6 +403,11 @@ def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str]:
             "titulo": sin_adornos(e.get("titulo")) or "?",
             "cuerpo": (e.get("cuerpo") or "").strip(),
             "cuando": e.get("cuando"),
+            # Las dos piezas que cierran el circulo en las colas de trabajo diario: a donde hay
+            # que ir (el post de X, el perfil de LinkedIn) y que texto llevarse. Sin el enlace
+            # habria que buscar el sitio a mano, que es la mitad del esfuerzo.
+            "donde": (e.get("donde") or "").strip(),
+            "copiar": (e.get("copiar") or "").strip(),
             "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
                           "coste_api": a.coste_api, "url": a.url,
                           "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible,

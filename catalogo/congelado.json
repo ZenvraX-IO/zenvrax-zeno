@@ -1,5 +1,5 @@
 {
- "generado": "2026-09-27",
+ "generado": "2026-09-28",
  "acciones": [
   {
    "op": "linkedin.aprobar_y_publicar",
@@ -14,7 +14,7 @@
    "destino": "{N8N_PUBLIC}/webhook/linkedin-approve?id={pid}",
    "cuerpo": {},
    "etiqueta": "✅ Aprobar",
-   "linea": 218
+   "linea": 199
   },
   {
    "op": "linkedin.regenerar",
@@ -29,7 +29,7 @@
    "destino": "{N8N_PUBLIC}/webhook/linkedin-regenerate?id={pid}",
    "cuerpo": {},
    "etiqueta": "🔄 Regenerar",
-   "linea": 219
+   "linea": 200
   },
   {
    "op": "abrir.post_del_pool",
@@ -44,7 +44,7 @@
    "destino": "/marketing?open={pid}&src=pool",
    "cuerpo": {},
    "etiqueta": "👀 Revisar y publicar",
-   "linea": 249
+   "linea": 206
   },
   {
    "op": "tema.marcar_publicado",
@@ -61,7 +61,7 @@
     "status": "published"
    },
    "etiqueta": "✅ Marcar publicado",
-   "linea": 250
+   "linea": 207
   },
   {
    "op": "x.publicar",
@@ -76,7 +76,7 @@
    "destino": "/marketing/content-x/{pid}/publish",
    "cuerpo": {},
    "etiqueta": "▲ Publicar en X",
-   "linea": 307
+   "linea": 221
   },
   {
    "op": "abrir.tweet",
@@ -91,7 +91,7 @@
    "destino": "/marketing/x?open={pid}",
    "cuerpo": {},
    "etiqueta": "🔍 Revisar / copiar",
-   "linea": 309
+   "linea": 223
   },
   {
    "op": "x.marcar_publicado",
@@ -108,7 +108,84 @@
     "x_status": "posted"
    },
    "etiqueta": "✅ Marcar publicado a mano",
-   "linea": 310
+   "linea": 224
+  },
+  {
+   "op": "dm.avanzar_arco",
+   "que_hace": "Anota hasta que mensaje del arco se ha enviado, y programa el siguiente",
+   "sistema": "cockpit",
+   "efecto": "cambia_estado",
+   "reversible": true,
+   "coste_api": false,
+   "confirmar": true,
+   "guarda": "tope de 15 avances al dia; el mensaje se copia y se pega en LinkedIn a mano",
+   "verbo": "PATCH",
+   "destino": "/marketing/linkedin/{pid}/arc",
+   "cuerpo": {
+    "arc_stage": 0
+   },
+   "etiqueta": "✓ Mensaje enviado",
+   "linea": 241
+  },
+  {
+   "op": "dm.nota_enviada",
+   "que_hace": "Anota que ya se mando la solicitud de conexion con su nota, a mano en LinkedIn",
+   "sistema": "cockpit",
+   "efecto": "cambia_estado",
+   "reversible": true,
+   "coste_api": false,
+   "confirmar": true,
+   "guarda": "consume cuota del dia (15): el propio cockpit deja de ofrecer mas cuando se agota",
+   "verbo": "POST",
+   "destino": "/marketing/linkedin/{pid}/mark-contacted",
+   "cuerpo": {},
+   "etiqueta": "✓ Nota enviada",
+   "linea": 236
+  },
+  {
+   "op": "dm.acepto",
+   "que_hace": "Anota que el prospecto acepto la conexion, y arranca su arco a los dos dias",
+   "sistema": "cockpit",
+   "efecto": "cambia_estado",
+   "reversible": true,
+   "coste_api": false,
+   "confirmar": true,
+   "guarda": "no escribe a nadie: el primer mensaje del arco aparece dos dias despues",
+   "verbo": "POST",
+   "destino": "/marketing/linkedin/{pid}/connected",
+   "cuerpo": {},
+   "etiqueta": "🤝 Conectó",
+   "linea": 239
+  },
+  {
+   "op": "x.ya_respondi",
+   "que_hace": "Anota que ya se respondio a esa cuenta hoy, y sale del recordatorio",
+   "sistema": "cockpit",
+   "efecto": "cambia_estado",
+   "reversible": true,
+   "coste_api": false,
+   "confirmar": true,
+   "guarda": "no escribe en X: el comentario se publica alli a mano",
+   "verbo": "POST",
+   "destino": "/marketing/x-targets/{tid}/mark-engaged",
+   "cuerpo": {},
+   "etiqueta": "✓ Respondí",
+   "linea": 248
+  },
+  {
+   "op": "x.saltar_hoy",
+   "que_hace": "Esconde esa cuenta hasta mañana sin contarla como respondida",
+   "sistema": "cockpit",
+   "efecto": "cambia_estado",
+   "reversible": true,
+   "coste_api": false,
+   "confirmar": true,
+   "guarda": "ninguna, y no hace falta: vuelve a salir mañana",
+   "verbo": "POST",
+   "destino": "/marketing/x-targets/{tid}/skip-today",
+   "cuerpo": {},
+   "etiqueta": "⤫ Saltar hoy",
+   "linea": 250
   },
   {
    "op": "magnet.publicar_en_linkedin",
@@ -123,7 +200,7 @@
    "destino": "/marketing/magnet-promo/{pid}/publish",
    "cuerpo": {},
    "etiqueta": "▲ Publicar en LinkedIn",
-   "linea": 634
+   "linea": 257
   },
   {
    "op": "magnet.cancelar_publicacion",
@@ -140,7 +217,7 @@
     "publication_status": "cancelled"
    },
    "etiqueta": "✕ Cancelar",
-   "linea": 636
+   "linea": 259
   },
   {
    "op": "abrir.magnets",
@@ -155,7 +232,7 @@
    "destino": "/marketing/magnets",
    "cuerpo": {},
    "etiqueta": "🔍 Revisar",
-   "linea": 638
+   "linea": 262
   },
   {
    "op": "abrir.magnets_para_copiar",
@@ -170,7 +247,7 @@
    "destino": "/marketing/magnets",
    "cuerpo": {},
    "etiqueta": "🔍 Revisar y copiar",
-   "linea": 686
+   "linea": 746
   },
   {
    "op": "magnet.marcar_publicado_en_x",
@@ -187,7 +264,7 @@
     "x_status": "posted"
    },
    "etiqueta": "✅ Marcar publicado",
-   "linea": 687
+   "linea": 747
   },
   {
    "op": "magnet.descartar_hilo_x",
@@ -204,7 +281,7 @@
     "x_status": "cancelled"
    },
    "etiqueta": "✕ Descartar thread",
-   "linea": 689
+   "linea": 749
   },
   {
    "op": "abrir.carta",
@@ -219,7 +296,7 @@
    "destino": "<dinamico>",
    "cuerpo": {},
    "etiqueta": "👁️ Ver la carta",
-   "linea": 749
+   "linea": 809
   },
   {
    "op": "carta.aprobar_y_enviar",
@@ -234,7 +311,7 @@
    "destino": "/newsletter/letters/{slug}/send",
    "cuerpo": {},
    "etiqueta": "✅ Aprobar y enviar",
-   "linea": 750
+   "linea": 810
   },
   {
    "op": "newsletter.confirmar_publicada",
@@ -249,7 +326,7 @@
    "destino": "{N8N_PUBLIC}/webhook/newsletter-confirm?nl_id={nl}&action=mark_published",
    "cuerpo": {},
    "etiqueta": "📰 Publicar / confirmar",
-   "linea": 788
+   "linea": 848
   },
   {
    "op": "abrir.guia_montaje",
@@ -264,7 +341,7 @@
    "destino": "<dinamico>",
    "cuerpo": {},
    "etiqueta": "📋 Abrir guía de montaje",
-   "linea": 887
+   "linea": 947
   },
   {
    "op": "newsletter.marcar_programada",
@@ -281,7 +358,7 @@
     "scheduled_in_li": true
    },
    "etiqueta": "✅ Ya está programado",
-   "linea": 888
+   "linea": 948
   },
   {
    "op": "abrir.estado_distribucion",
@@ -296,7 +373,7 @@
    "destino": "https://magnets.zenvrax.com/distribucion/estado.html",
    "cuerpo": {},
    "etiqueta": "Qué falta por producto",
-   "linea": 2561
+   "linea": 2683
   },
   {
    "op": "abrir.distribucion_preparacion",
@@ -311,7 +388,7 @@
    "destino": "/marketing/distribucion",
    "cuerpo": {},
    "etiqueta": "Abrir la preparación",
-   "linea": 2563
+   "linea": 2685
   },
   {
    "op": "abrir.estado_distribucion_retomar",
@@ -326,7 +403,7 @@
    "destino": "https://magnets.zenvrax.com/distribucion/estado.html",
    "cuerpo": {},
    "etiqueta": "Qué falta y por dónde se retoma",
-   "linea": 2642
+   "linea": 2764
   },
   {
    "op": "abrir.guia_envio_xsupport",
@@ -341,7 +418,7 @@
    "destino": "https://magnets.zenvrax.com/xsupport/alta/guia.html",
    "cuerpo": {},
    "etiqueta": "Guía de envío",
-   "linea": 2644
+   "linea": 2766
   },
   {
    "op": "abrir.distribucion_panel",
@@ -356,7 +433,7 @@
    "destino": "/marketing/distribucion",
    "cuerpo": {},
    "etiqueta": "Abrir el panel",
-   "linea": 2645
+   "linea": 2767
   },
   {
    "op": "recompra.lanzar_campana",
