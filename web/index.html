@@ -47,6 +47,13 @@
      diagonal en blanco y un punto ambar. Convivia con un icono distinto en la pestaña y en la
      pantalla de inicio, o sea tres marcas para una aplicacion. */
   .marca{width:26px;height:26px;flex:0 0 auto;display:block}
+  /* La marca, el nombre y lo que es. Va arriba del todo y por encima del titulo de la pantalla:
+     el titulo cambia ("Hoy", "Trabajo") y esto no, asi que es lo que ancla donde estas. */
+  .quien{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+  .quien .marca{width:20px;height:20px}
+  .quien .nombre{font-size:14px;font-weight:700;letter-spacing:-.2px}
+  .quien .va{font-size:9.5px;font-weight:700;letter-spacing:1.2px;color:var(--ambar);
+             border:1px solid var(--ambar);border-radius:5px;padding:1px 5px 2px;line-height:1}
 
   /* `overscroll-behavior:contain` apaga el rebote propio del navegador: sin eso, en iOS el gesto
      lo captura Safari y el tiron de recargar no llega nunca a la aplicacion. */
@@ -61,11 +68,13 @@
   @keyframes gira{to{transform:rotate(360deg)}}
   /* TRES pestañas. Eran seis, y en 390px son 65px cada una. Preguntar y buscar se hacen DESDE
      donde estas, asi que el chat es una burbuja y buscar es la lupa de arriba: no son sitios. */
-  .pie{display:flex;border-top:1px solid var(--linea);padding:0 12px var(--abajo);
-       background:var(--negro)}
-  .pie button{flex:1;background:none;border:0;color:var(--apagado);padding:14px 0 18px;
-              font-size:13.5px;cursor:pointer}
-  .pie button.on{color:var(--ambar);font-weight:600}
+  .pie{display:flex;gap:8px;border-top:1px solid var(--linea);background:var(--negro);
+       padding:8px 12px calc(8px + var(--abajo))}
+  .pie button{flex:1;background:var(--carbon);border:1px solid var(--linea);border-radius:12px;
+              color:var(--gris);padding:0 0;min-height:44px;font-size:13.5px;font-weight:600;
+              cursor:pointer;transition:background .12s,color .12s}
+  .pie button:active{background:#1e1e24}
+  .pie button.on{background:var(--ambar);border-color:var(--ambar);color:#221a08;font-weight:700}
   .flotante{position:fixed;right:18px;bottom:calc(88px + var(--abajo));width:54px;height:54px;
             border-radius:50%;background:var(--ambar);border:0;display:flex;align-items:center;
             justify-content:center;z-index:6;cursor:pointer;color:#221a08}
@@ -161,11 +170,8 @@
          border:1px solid var(--linea);color:var(--gris);font-size:17px;flex:0 0 auto;
          display:flex;align-items:center;justify-content:center}
   .micro[hidden]{display:none}
-  .micro.oyendo{background:var(--ambar);border-color:var(--ambar);color:#221a08}
-  /* El halo late, NO el boton. Con `transform:scale` el boton crecia y encogia, o sea el
-     objetivo del dedo se movia mientras intentas volver a pulsarlo para parar. Se vio en el
-     navegador de prueba, que no consiguio pulsarlo en 30 segundos por no quedarse quieto. */
-  .micro.oyendo{animation:late 1.3s ease-in-out infinite}
+  .micro.oyendo{background:var(--ambar);border-color:var(--ambar);color:#221a08;
+                animation:late 1.3s ease-in-out infinite}
   @keyframes late{0%,100%{box-shadow:0 0 0 0 rgba(240,168,48,.55)}
                   50%{box-shadow:0 0 0 7px rgba(240,168,48,0)}}
   @media (prefers-reduced-motion: reduce){ .micro.oyendo{animation:none} }
@@ -368,9 +374,10 @@
 <!-- LA APLICACION -->
 <div id="app" hidden style="display:flex;flex-direction:column;height:100%">
   <div class="barra">
-    <div style="flex:1">
+    <div style="flex:1;min-width:0">
+      <div class="quien"><svg class="marca" viewBox="0 0 192 192" aria-hidden="true"><rect width="192" height="192" rx="42" fill="#101012"></rect><rect x="40" y="40" width="112" height="24" fill="#f7f7f9"></rect><rect x="40" y="128" width="112" height="24" fill="#f7f7f9"></rect><path d="M140 52 L52 140" stroke="#101012" stroke-width="47"></path><path d="M140 52 L52 140" stroke="#f0a830" stroke-width="24"></path></svg><span class="nombre">Zeno</span><span class="va">VA</span></div>
       <span class="fecha" id="fecha"></span>
-      <div class="t" id="titulo">Zeno</div>
+      <div class="t" id="titulo">Hoy</div>
     </div>
     <button class="icono" id="btn-buscar" aria-label="Buscar">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"

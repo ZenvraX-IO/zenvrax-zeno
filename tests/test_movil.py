@@ -248,3 +248,36 @@ def test_al_ejecutar_dentro_de_una_cola_se_recarga_esa_cola():
     trozo = h[h.index('"><div class="q">Hecho: '):]
     trozo = trozo[:trozo.index("} catch (e)")]
     assert "abreCola(colaAbierta.cola" in trozo, "no se recarga la cola que se esta mirando"
+
+
+def test_el_pie_se_ve_como_botones():
+    """El operador: que los tres de abajo "se marcaran un poco mas como si fueran CTAs, asi no
+    dan lugar a duda". Eran tres palabras sueltas y el unico indicio del activo era el color."""
+    regla = _regla(_html(), ".pie button")
+    assert "border-radius" in regla and "background" in regla, "siguen siendo texto plano"
+    assert "min-height:44px" in regla.replace(" ", ""), "no llegan al minimo tocable de un dedo"
+    activo = _regla(_html(), ".pie button.on")
+    assert "var(--ambar)" in activo
+
+
+def test_la_aplicacion_dice_que_es_y_como_se_llama():
+    """Se abre desde la pantalla de inicio del telefono y dentro no ponia en ningun sitio que
+    esto es Zeno. El titulo cambia ("Hoy", "Trabajo"); esto no."""
+    h = _html()
+    assert 'class="quien"' in h
+    assert '<span class="nombre">Zeno</span>' in h
+    assert '<span class="va">VA</span>' in h
+    # Y la marca, que es la misma del icono y de la pantalla de entrada.
+    trozo = h[h.index('class="quien"'):h.index('class="quien"') + 700]
+    assert 'class="marca"' in trozo, "el nombre va sin el logo"
+
+
+def test_ninguna_regla_de_css_se_declara_dos_veces_seguidas():
+    """Dos reglas con el mismo selector funcionan por cascada, pero es exactamente la forma en
+    que un estilo viejo gana al nuevo sin que nadie lo vea: ya paso con `.urgente`."""
+    import collections
+    css = _html()
+    css = css[css.index("<style>"):css.index("</style>")]
+    selectores = re.findall(r"\n  ([.#a-zA-Z][^{\n]*)\{", css)
+    repes = [s for s, n in collections.Counter(s.strip() for s in selectores).items() if n > 1]
+    assert repes == [], f"selectores declarados mas de una vez: {repes}"
