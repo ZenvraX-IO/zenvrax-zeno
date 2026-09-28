@@ -17,6 +17,7 @@ Las seis formas de romperlo:
 
 Puros: sin red.
 """
+import pathlib
 import sys
 from pathlib import Path
 
@@ -57,14 +58,78 @@ def _escribe_bien(monkeypatch, visto):
 
 # ---------------------------------------------------------------- nunca envia
 
-def test_esto_no_puede_enviar_nada_por_ningun_camino():
-    """EL TEST QUE IMPORTA. Toda la pieza existe para que redactar y enviar sean cosas distintas.
-    Si en algun momento apareciera una llamada a `send`, la diferencia dejaria de existir y el
-    tramo de permisos de Google no lo impediria: `gmail.compose` deja hacer las dos cosas."""
-    fuente = (RAIZ / "servicio" / "correo.py").read_text(encoding="utf-8")
-    assert "/send" not in fuente, "hay un camino que envia"
-    assert "messages/send" not in fuente
+def test_solo_hay_UN_camino_que_envia_y_pasa_por_el_borrador():
+    """EL TEST QUE IMPORTA, estrechado el 28-sep en vez de quitado.
+
+    Hasta ese dia decia que NINGUNA llamada podia enviar, y ya avisaba de lo que acabo siendo
+    cierto: *"el tramo de permisos de Google no lo impediria: `gmail.compose` deja hacer las dos
+    cosas"*. Tenia razon y el comentario de `google.py` decia lo contrario. La barrera nunca
+    estuvo en el permiso.
+
+    Ahora enviar existe, asi que lo que se defiende es COMO: un solo camino, por el borrador, y
+    nunca `messages/send` directo, que mandaria el correo sin dejar copia si algo falla.
+    """
+    fuente = _solo_el_codigo(RAIZ / "servicio" / "correo.py")
+    assert "messages/send" not in fuente, (
+        "envio directo: si falla a mitad, el texto escrito se pierde")
+    assert fuente.count("/drafts/send") == 1, "hay mas de un camino que envia, o ninguno"
     assert "/drafts" in fuente, "y el de borradores tiene que seguir existiendo"
+
+
+def test_el_envio_crea_el_borrador_antes_de_mandarlo(monkeypatch):
+    """Los dos pasos son la red de seguridad: si el envio falla, el texto esta en Gmail. Con un
+    solo paso, un fallo se lleva por delante lo que el operador acababa de escribir."""
+    escrito = []
+    monkeypatch.setattr(correo.google, "escribe",
+                        lambda n, url, cuerpo: escrito.append(url) or {"id": "d1"})
+    monkeypatch.setattr(correo, "lee_entero", lambda n, i, tope=4000: {
+        "de": "Ana <ana@cliente.com>", "asunto": "Hola", "hilo": "h1",
+        "mensaje_id": "<m1>", "referencias": ""})
+    monkeypatch.setattr(correo, "contesta_alguien", lambda d: True)
+    v = correo.prepara("zenvrax", "m1", "Te llamo el jueves.")["vale"]
+    salida = correo.envia(v)
+    assert [u.rsplit("/v1/users/me", 1)[-1] for u in escrito] == ["/drafts", "/drafts/send"], escrito
+    assert salida["enviado"] is True and salida["id"] == "d1"
+
+
+def test_si_no_se_sabe_si_salio_NO_se_dice_que_fallo(monkeypatch):
+    """Un timeout despues de mandar la peticion puede significar que el correo ya se fue. Decir
+    "no se ha enviado" invita a reintentar, y reintentar manda el correo dos veces al cliente."""
+    def _escribe(n, url, cuerpo):
+        if url.endswith("/drafts"):
+            return {"id": "d1"}
+        raise TimeoutError("se corto")
+
+    monkeypatch.setattr(correo.google, "escribe", _escribe)
+    monkeypatch.setattr(correo, "lee_entero", lambda n, i, tope=4000: {
+        "de": "Ana <ana@cliente.com>", "asunto": "Hola", "hilo": "h1",
+        "mensaje_id": "<m1>", "referencias": ""})
+    monkeypatch.setattr(correo, "contesta_alguien", lambda d: True)
+    v = correo.prepara("zenvrax", "m1", "Te llamo el jueves.")["vale"]
+    try:
+        correo.envia(v)
+    except correo.NoSeSabe as e:
+        assert "Enviados" in str(e), "no dice donde comprobarlo antes de repetir"
+        assert "no he podido" not in str(e).lower() or "saber" in str(e).lower()
+    else:
+        raise AssertionError("un envio de resultado desconocido se dio por bueno")
+
+
+def test_un_vale_gastado_no_puede_enviar_otra_vez(monkeypatch):
+    """Sin esto, pulsar dos veces manda el correo dos veces."""
+    monkeypatch.setattr(correo.google, "escribe", lambda n, url, cuerpo: {"id": "d1"})
+    monkeypatch.setattr(correo, "lee_entero", lambda n, i, tope=4000: {
+        "de": "Ana <ana@cliente.com>", "asunto": "Hola", "hilo": "h1",
+        "mensaje_id": "<m1>", "referencias": ""})
+    monkeypatch.setattr(correo, "contesta_alguien", lambda d: True)
+    v = correo.prepara("zenvrax", "m1", "Te llamo el jueves.")["vale"]
+    correo.envia(v)
+    try:
+        correo.envia(v)
+    except correo.NoSePuede:
+        pass
+    else:
+        raise AssertionError("el mismo vale ha enviado dos veces")
 
 
 def test_lo_que_se_manda_a_gmail_es_un_borrador(monkeypatch):
@@ -81,8 +146,12 @@ def test_lo_que_se_manda_a_gmail_es_un_borrador(monkeypatch):
 def test_preparar_no_escribe_en_gmail(monkeypatch):
     _nada_se_escribe(monkeypatch)
     p = correo.prepara("zenvrax", "m1", "Te llamo el jueves.")
-    assert p["vale"] and p["solo_borrador"] is True
-    assert "No se envia" in p["que_pasa"]
+    # `solo_borrador` paso a False el 28-sep: el mismo vale sirve para guardar y para enviar, asi
+    # que prepara() ya no puede prometer que no se envia. Lo decide el boton que se pulse, y por
+    # eso la respuesta avisa de que uno de los dos sale al mundo.
+    assert p["vale"] and p["solo_borrador"] is False
+    assert p["enviar_sale_al_mundo"] is True
+    assert "borrador" in p["que_pasa"] and "enviarlo" in p["que_pasa"]
 
 
 def test_un_vale_sirve_una_sola_vez(monkeypatch):
@@ -195,3 +264,26 @@ def test_las_direcciones_que_no_leen_a_nadie():
         assert correo.contesta_alguien(muerta) is False, muerta
     for viva in ("ana@cliente.com", "info@ecommheroacademy.com", "ghidalgo@gutlyn.com"):
         assert correo.contesta_alguien(viva) is True, viva
+
+
+def _solo_el_codigo(ruta) -> str:
+    """El fichero SIN docstrings ni comentarios.
+
+    La primera version buscaba en el texto crudo y saltaba por un comentario que explicaba
+    precisamente que NO se usa `messages/send`. Un guardian que no distingue lo que el codigo hace
+    de lo que el codigo cuenta obliga a no escribir comentarios, que es el peor de los arreglos.
+    """
+    import ast as _ast
+    arbol = _ast.parse(pathlib.Path(ruta).read_text(encoding="utf-8"))
+    for nodo in _ast.walk(arbol):
+        if not isinstance(nodo, (_ast.Module, _ast.FunctionDef, _ast.AsyncFunctionDef,
+                                 _ast.ClassDef)):
+            continue
+        cuerpo = getattr(nodo, "body", [])
+        if (cuerpo and isinstance(cuerpo[0], _ast.Expr)
+                and isinstance(cuerpo[0].value, _ast.Constant)
+                and isinstance(cuerpo[0].value.value, str)):
+            cuerpo.pop(0)
+            if not cuerpo:                      # una funcion que solo era su docstring
+                cuerpo.append(_ast.Pass())
+    return _ast.unparse(arbol)

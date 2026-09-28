@@ -1,10 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Redactar una respuesta y dejarla como BORRADOR en tu Gmail. Nunca enviarla.
+"""Redactar una respuesta, dejarla como borrador o enviarla.
 
-EL ESCALÓN INTERMEDIO, y por eso existe. Enviar un correo sale al mundo igual que publicar un post:
-llega a un cliente y no se recoge. Un borrador no sale de tu buzón, se edita donde ya trabajas y se
-manda tú cuando quieras. Zeno escribe; la decisión de enviar sigue siendo tuya, y sigue estando en
-Gmail, que es donde ya está.
+EL ESCALÓN INTERMEDIO SIGUE SIENDO EL DEFECTO. Enviar un correo sale al mundo igual que publicar un
+post: llega a un cliente y no se recoge. Así que el botón grande sigue siendo el borrador, que no
+sale de tu buzón y se edita donde ya trabajas.
+
+ENVIAR SE AÑADIÓ EL 2026-09-28, porque era el único trabajo diario que empezaba en Zeno y terminaba
+fuera: Zeno escribía la respuesta y había que abrir Gmail solo para pulsar enviar. Pide el PIN, como
+todo lo que no se deshace, y NO se puede hacer hablando.
+
+Y AQUÍ HAY UN HALLAZGO QUE CONVIENE NO OLVIDAR. Este módulo decía "nunca enviarla" y el comentario
+de `google.PERMISO_BORRADOR` decía "No envia nada". Era falso desde el 27-sep: `gmail.compose`, el
+permiso que el operador ya tenía concedido, dice literalmente *"Manage drafts and send emails"*. O
+sea que la barrera que creíamos tener no existía: lo único que impedía enviar era que no había
+código que lo hiciera. Una barrera imaginaria es peor que ninguna, porque se confía en ella.
+
+SE ENVÍA POR EL CAMINO DEL BORRADOR (crear y luego `drafts/{id}/send`), no con `messages/send`
+directo, por dos razones: es el camino que `gmail.compose` garantiza sin pedir un permiso nuevo, y
+si el envío falla el texto queda guardado en Gmail en vez de perderse.
 
 EL BORRADOR VIVE EN TU GMAIL, no en Zeno. Así se lee desde el móvil, desde el portátil o desde donde
 sea, y si Zeno desapareciera mañana los borradores seguirían ahí. Es la misma decisión que con los
@@ -29,11 +42,22 @@ from servicio import google, personal
 GMAIL = personal.GMAIL
 
 _VALES: dict[str, dict] = {}
-_VIVE = 900.0                # quince minutos: un borrador no sale al mundo, no hay prisa
+#: Cinco minutos desde que se anadio el envio. Antes eran quince "porque un borrador no sale al
+#: mundo": ahora el mismo vale puede mandar un correo, asi que vale lo que vale una confirmacion
+#: de algo irreversible y no lo que vale guardar un texto.
+_VIVE = 300.0
 
 
 class NoSePuede(RuntimeError):
     """No se puede preparar o guardar el borrador, y el mensaje dice por que."""
+
+
+class NoSeSabe(RuntimeError):
+    """Se mando la peticion de envio y no se supo el resultado.
+
+    ES DISTINTO de NoSePuede y por eso es otra clase: "no se ha podido" invita a reintentar, y
+    reintentar un envio que si salio manda el correo dos veces al mismo cliente.
+    """
 
 
 def _texto_de(parte: dict) -> str:
@@ -119,9 +143,13 @@ def prepara(negocio: str, ident: str, texto: str) -> dict:
                     "mensaje_id": original["mensaje_id"],
                     "referencias": original["referencias"]}
     return {"vale": vale, "para": para, "asunto": asunto, "texto": texto.strip(),
-            # Se dice con todas las letras, porque es justo lo que lo distingue de enviar.
-            "solo_borrador": True,
-            "que_pasa": "Se guarda en tu Gmail como borrador. No se envia.",
+            # EL VALE SIRVE PARA LOS DOS CAMINOS, y por eso aqui ya no se promete que no se envia:
+            # hasta el 28-sep esta respuesta decia "No se envia" y era cierto porque no habia otro
+            # camino. Ahora lo decide el boton que se pulse, asi que se dicen las dos opciones y
+            # cual sale al mundo.
+            "solo_borrador": False,
+            "que_pasa": "Puedes guardarlo como borrador en tu Gmail, o enviarlo.",
+            "enviar_sale_al_mundo": True,
             "nadie_lo_lee": not contesta_alguien(para)}
 
 
@@ -157,3 +185,44 @@ def guarda(vale: str) -> dict:
                   + urllib.parse.quote(google.CUENTAS.get(d["negocio"], ""))
                   + "#drafts" + (("/" + ident) if ident else "")),
     }
+
+
+def envia(vale: str) -> dict:
+    """Manda la respuesta. IRREVERSIBLE: llega a quien sea y no se recoge.
+
+    Dos pasos a proposito. Primero se crea el borrador y solo despues se manda: si el envio falla,
+    el texto queda guardado en Gmail y el trabajo no se pierde. Con `messages/send` directo, un
+    fallo se lleva por delante lo escrito.
+
+    QUIEN COMPRUEBA EL PIN NO ES ESTO, es el endpoint, igual que en el ejecutor. Aqui no hay sesion.
+    """
+    d = _VALES.get(vale)
+    if not d or time.time() - d["nacida"] > _VIVE:
+        _VALES.pop(vale, None)
+        raise NoSePuede("esa respuesta ha caducado: vuelve a prepararla")
+
+    # El borrador primero, con el vale TODAVIA vivo: si esto falla, no se ha quemado nada y se
+    # puede reintentar sin volver a escribir el texto.
+    guardado = guarda(vale)                      # esto ya consume el vale
+    ident = guardado.get("id", "")
+    if not ident:
+        # Sin id no hay nada que mandar, y el texto esta a salvo en Gmail. Se dice tal cual.
+        raise NoSePuede("el borrador se ha guardado pero Gmail no ha devuelto su id: "
+                        "esta en tu Gmail, mandalo desde ahi")
+
+    try:
+        google.escribe(d["negocio"], f"{GMAIL}/drafts/send", {"id": ident})
+    except Exception as e:                                # noqa: BLE001
+        # AQUI NO SE SABE SI SALIO. Un timeout despues de mandar la peticion puede significar que
+        # el correo ya se fue. Decir "no se ha enviado" seria mentir con seguridad y llevaria a
+        # reintentar, o sea a mandarlo dos veces al mismo cliente.
+        raise NoSeSabe(
+            f"no he podido saber si ha salido ({type(e).__name__}). El borrador esta en tu Gmail: "
+            "mira en Enviados antes de repetirlo") from e
+
+    return {"enviado": True, "para": d["para"], "asunto": d["asunto"], "id": ident,
+            "guardado": True,
+            # A Enviados, no a borradores: es donde el operador va a comprobarlo.
+            "abrir": ("https://mail.google.com/mail/?authuser="
+                      + urllib.parse.quote(google.CUENTAS.get(d["negocio"], ""))
+                      + "#sent")}

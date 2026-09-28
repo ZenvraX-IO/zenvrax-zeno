@@ -1597,11 +1597,15 @@ async function cargaPersonal() {
   pintaAgendaExtra();
 }
 
-// ---------------------------------------------------------------- responder, sin enviar
+// ---------------------------------------------------------------- responder
 //
-// Zeno redacta y GUARDA EL BORRADOR EN TU GMAIL. No envia, y no hay ningun camino en Zeno que lo
-// haga: enviar sale al mundo igual que publicar, y el borrador es justo el escalon que separa las
-// dos cosas. Se revisa y se manda desde Gmail, que es donde ya trabajas.
+// Zeno redacta y GUARDA EL BORRADOR EN TU GMAIL, que sigue siendo el boton grande: un borrador no
+// sale de tu buzon y se edita donde ya trabajas.
+//
+// DESDE EL 28-sep TAMBIEN ENVIA, porque era el unico trabajo diario que empezaba en Zeno y
+// terminaba fuera: la respuesta estaba escrita y habia que abrir Gmail solo para pulsar enviar.
+// Enviar sale al mundo igual que publicar, asi que se trata igual: boton aparte y apagado, aviso
+// de que no se deshace, y PIN.
 
 let borradorVivo = null;
 
@@ -1616,12 +1620,16 @@ function abreBorrador(id) {
     'padding:11px;color:var(--texto);font-size:16px;margin-bottom:8px"></textarea>' +
     '<div class="btns"><button class="b" id="bor-escribe">Que lo escriba Zeno</button>' +
     '<button class="b primaria" id="bor-guarda">Guardar borrador</button>' +
+    // ENVIAR NO ES EL BOTON GRANDE, y no por estetica: el borrador se deshace y esto no. Va en
+    // secundario y al lado del que no hace dano, para que el dedo tenga que ir a buscarlo.
+    '<button class="b" id="bor-envia">Enviar</button>' +
     '<button class="b sin" id="bor-nada">Dejarlo</button></div>' +
     '<div id="bor-aviso"></div></div>';
   caja.scrollIntoView({ block: "center" });
   $("#bor-nada").onclick = () => { borradorVivo = null; caja.innerHTML = ""; };
   $("#bor-escribe").onclick = () => escribeZeno();
   $("#bor-guarda").onclick = () => guardaBorrador();
+  $("#bor-envia").onclick = () => enviaRespuesta();
 }
 
 async function escribeZeno() {
@@ -1667,6 +1675,69 @@ async function guardaBorrador() {
       "Abrirlo en Gmail</a></div>";
   } catch (e) {
     b.disabled = false; b.textContent = "Guardar borrador";
+    $("#bor-aviso").innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+  }
+}
+
+// Enviar de verdad. Tres cosas antes de que salga: se dice a quien va y que no se recoge, se
+// avisa si la direccion parece automatica, y el servidor pide el PIN.
+async function enviaRespuesta() {
+  const texto = ($("#bor-texto").value || "").trim();
+  if (!texto) { $("#bor-texto").focus(); return; }
+  const b = $("#bor-envia");
+  b.disabled = true; b.textContent = "…";
+  let p;
+  try {
+    p = await api("/api/correo/borrador", { method: "POST", body: JSON.stringify({
+      id: borradorVivo.id, texto }) });
+  } catch (e) {
+    b.disabled = false; b.textContent = "Enviar";
+    $("#bor-aviso").innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
+    return;
+  }
+  // SE DICE A QUIEN VA Y QUE NO SE DESHACE, con la direccion delante. La pregunta lleva el dato
+  // que evita el error de verdad, que es mandarselo a quien no era.
+  if (!confirm("Enviar a " + p.para + "\n\nSale ahora y no se puede recoger.")) {
+    b.disabled = false; b.textContent = "Enviar";
+    return;
+  }
+  if (p.nadie_lo_lee &&
+      !confirm(p.para + " parece una dirección automática y puede que no lo lea nadie. " +
+               "¿Lo mando igual?")) {
+    b.disabled = false; b.textContent = "Enviar";
+    return;
+  }
+  await mandaConPin(p.vale);
+}
+
+async function mandaConPin(vale) {
+  const b = $("#bor-envia");
+  try {
+    const r = await fetch("/api/correo/enviar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      body: JSON.stringify({ vale }) });
+    // 428 es "falta el PIN", no "sesion mala": se pide y se reintenta CON EL MISMO VALE. Volver a
+    // prepararlo crearia un borrador nuevo en Gmail por cada intento.
+    if (r.status === 428) {
+      const pin = prompt("PIN para enviar el correo");
+      if (!pin) { b.disabled = false; b.textContent = "Enviar"; return; }
+      try {
+        await api("/api/pin", { method: "POST", body: JSON.stringify({ pin }) });
+      } catch (e) { b.disabled = false; b.textContent = "Enviar"; alert(e.message); return; }
+      return mandaConPin(vale);
+    }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.detail || ("error " + r.status));
+    borradorVivo = null;
+    $("#borrador").innerHTML = '<div class="propuesta"><div class="q">Enviado</div>' +
+      '<div class="c">A ' + esc(d.para) + ". Ya ha salido.</div>" +
+      '<a class="b" href="' + esc(d.abrir) + '" target="_blank" rel="noopener">' +
+      "Verlo en Enviados</a></div>";
+  } catch (e) {
+    b.disabled = false; b.textContent = "Enviar";
+    // El mensaje del servidor se enseña TAL CUAL. Cuando dice que no se sabe si salio, esa frase
+    // es la que evita que el operador lo mande dos veces al mismo cliente.
     $("#bor-aviso").innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
   }
 }

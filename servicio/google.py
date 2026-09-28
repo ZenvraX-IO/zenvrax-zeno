@@ -86,7 +86,15 @@ PERMISOS_LEER = [
     "https://www.googleapis.com/auth/calendar.readonly",
     "openid", "email",
 ]
-#: Tramo B: dejar borradores EN el Gmail del operador. No envia nada.
+#: Tramo B: dejar borradores EN el Gmail del operador, Y ENVIARLOS.
+#:
+#: OJO, ESTE COMENTARIO DECIA "No envia nada" Y ERA FALSO. Google describe `gmail.compose` como
+#: *"Manage drafts and send emails"*: desde que el operador lo concedio el 27-sep, el permiso ya
+#: permitia mandar correo. Lo unico que lo impedia era que no habia codigo que lo hiciera, y eso
+#: no es una barrera, es una casualidad. Se creyo lo contrario un dia entero.
+#:
+#: Lo que de verdad protege el envio, desde el 28-sep, esta en el codigo: PIN obligatorio, vale de
+#: un solo uso, renglon en el diario y ningun camino por voz.
 PERMISO_BORRADOR = "https://www.googleapis.com/auth/gmail.compose"
 #: Tramo D, la agenda: crear y mover citas. Sale al mundo, pero solo hacia el calendario.
 PERMISO_AGENDA = "https://www.googleapis.com/auth/calendar.events"

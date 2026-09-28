@@ -92,7 +92,11 @@ def test_la_lista_de_endpoints_que_escriben_es_cerrada():
                              # accion_confirmar, con su diario. Y solo empareja lo
                              # reversible: lo que publica no se hace hablando
         "correo_borrador",   # prepara el borrador; no toca Gmail
-        "correo_borrador_confirmar",  # lo guarda en Gmail. NO envia: no hay camino que envie
+        "correo_borrador_confirmar",  # lo guarda en Gmail. NO envia
+        "correo_enviar",      # ENVIA de verdad. Sale al mundo y no se recoge: PIN obligatorio,
+                             # vale de un solo uso y renglon en el diario, igual que publicar.
+                             # Se abrio el 28-sep porque era el unico trabajo diario que empezaba
+                             # en Zeno y terminaba en Gmail
         "correo_redactar",   # propone el texto con Haiku; no escribe nada
         "entrar_con_clave",  # cambia la clave propia por un token
         "google_conectar",   # devuelve la direccion de Google; no toca ninguna cola

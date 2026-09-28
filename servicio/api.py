@@ -983,7 +983,7 @@ async def correo_borrador(body: Borrador, authorization: str = Header(default=""
 
 @app.post("/api/correo/borrador/confirmar")
 async def correo_borrador_confirmar(body: ValeDeBorrador, authorization: str = Header(default="")):
-    """Guarda el borrador en Gmail. NO envia: no hay ningun camino en Zeno que envie correo."""
+    """Guarda el borrador en Gmail. NO envia: para eso esta `/api/correo/enviar`, con PIN."""
     _quien(authorization)
     try:
         return correo.guarda(body.vale)
@@ -991,6 +991,38 @@ async def correo_borrador_confirmar(body: ValeDeBorrador, authorization: str = H
         raise HTTPException(409, str(e)) from e
     except google.NoAutorizado as e:
         raise HTTPException(503, str(e)) from e
+
+
+@app.post("/api/correo/enviar")
+async def correo_enviar(body: ValeDeBorrador, authorization: str = Header(default="")):
+    """ENVIA la respuesta. Sale al mundo y no se recoge: PIN obligatorio y queda en el diario.
+
+    Es el segundo camino de Zeno que llega a una persona, despues de publicar. Se trata igual:
+    PIN, vale de un solo uso y renglon escrito, incluidos los intentos de los que no se sabe el
+    resultado, que son justo los que hay que ir a mirar.
+    """
+    _, token = _quien(authorization)
+    if not clave_mod.pin_abierto(_huella(token)):
+        # 428 y no 401: la sesion es buena, lo que falta es el PIN. Con 401 el front borraria el
+        # token y echaria al operador fuera con la respuesta ya escrita.
+        raise HTTPException(428, "enviar un correo no se deshace: hace falta el PIN")
+    try:
+        salida = correo.envia(body.vale)
+    except correo.NoSeSabe as e:
+        # SE APUNTA IGUAL, marcado como dudoso, por lo mismo que en el ejecutor: un envio del que
+        # no se sabe el resultado es el que hay que comprobar antes de repetir.
+        diario.apunta({"op": "correo_enviar", "etiqueta": "correo", "titulo": "Respuesta de correo",
+                       "efecto": "publica", "publica": True, "resultado": "no_se_sabe",
+                       "motivo": type(e).__name__})
+        raise HTTPException(409, str(e)) from e
+    except correo.NoSePuede as e:
+        raise HTTPException(409, str(e)) from e
+    except google.NoAutorizado as e:
+        raise HTTPException(503, str(e)) from e
+    diario.apunta({"op": "correo_enviar", "etiqueta": "correo",
+                   "titulo": f"Respuesta a {salida.get('para', '')}",
+                   "efecto": "publica", "publica": True, "resultado": "hecho"})
+    return salida
 
 
 @app.get("/api/personal")

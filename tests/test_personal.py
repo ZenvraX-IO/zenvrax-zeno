@@ -201,7 +201,9 @@ def test_escribir_en_google_solo_pasa_por_confirmar():
     quien consume un vale, nunca quien lo reparte. Si una funcion `propone` o `prepara` escribiera,
     la cita o el borrador existirian antes de que el operador los mirara, y los dos tiempos no
     servirian de nada."""
-    for fichero, permitidas in (("citas.py", ("confirma",)), ("correo.py", ("guarda",))):
+    # `envia` se anadio el 28-sep y cumple la misma forma: consume un vale, no lo reparte. Se
+    # declara aqui a proposito, para que anadir otro escritor obligue a pasar por este test.
+    for fichero, permitidas in (("citas.py", ("confirma",)), ("correo.py", ("guarda", "envia"))):
         _solo_escriben(fichero, permitidas)
 
 
