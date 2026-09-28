@@ -46,7 +46,7 @@ async def main():
             await pag.locator("[data-aviso]").first.click()
             await pag.wait_for_timeout(2500)
             await pag.screenshot(path=str(FUERA / "confirmacion.png"))
-            txt = await pag.locator("#confirmar-accion").inner_text()
+            txt = await pag.locator(".confirmar-aqui").first.inner_text()
             print("  la confirmacion dice:", " / ".join(txt.split("\n"))[:220])
 
         await nav.close()
