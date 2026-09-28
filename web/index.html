@@ -1063,9 +1063,10 @@ async function preguntar(desde) {
   if (texto.length < 2) return "";
   let dicho = "";
   if (desde === undefined) caja.value = "";
-  // Lo hablado antes viaja con la pregunta. Se lee de la PANTALLA, que es donde esta la
-  // conversacion: guardarla en el servidor seria estado nuevo, y al cerrar la aplicacion la
-  // conversacion se acaba de todas formas.
+  // Lo hablado antes viaja con la pregunta. Se lee de la PANTALLA, que es la verdad de lo que
+  // el operador esta viendo. El servidor ADEMAS la guarda desde el 28-sep, para poder retomarla
+  // manana: el motivo por el que antes no se guardaba ("la conversacion se acaba al cerrar la
+  // aplicacion") era justamente el problema.
   const turnos = [...document.querySelectorAll("#burbujas .tu, #burbujas .el")]
     .map(b => ({ de: b.classList.contains("tu") ? "yo" : "zeno", texto: b.textContent }))
     .filter(t => t.texto && t.texto !== "pensando…");
@@ -1091,11 +1092,37 @@ async function preguntar(desde) {
   return dicho;
 }
 
-function cargaChat() {
-  if (!$("#burbujas").children.length)
-    burbuja("el", "Pregúntame por lo que tienes pendiente, cómo van los negocios o qué dice la " +
-                  "documentación. Lo que se puede hacer desde aquí sale con su botón, y " +
-                  "siempre te lo pregunto antes de hacerlo.");
+async function cargaChat() {
+  if ($("#burbujas").children.length) return;
+  // SE RETOMA LO ULTIMO QUE SE HABLO. Antes, cerrar la aplicacion borraba la conversacion y
+  // volver era empezar de cero con alguien que se te olvida entre frase y frase.
+  let h = null;
+  try { h = await api("/api/hilo"); } catch { h = null; }
+  if (h && (h.turnos || []).length) {
+    const sep = document.createElement("div");
+    sep.className = "coste";
+    sep.style.textAlign = "center";
+    sep.textContent = "lo último que hablamos, " + cuando(h.ultima_vez);
+    $("#burbujas").appendChild(sep);
+    for (const t of h.turnos) burbuja(t.de === "zeno" ? "el" : "tu", t.texto);
+    return;
+  }
+  burbuja("el", "Pregúntame por lo que tienes pendiente, cómo van los negocios o qué dice la " +
+                "documentación. Lo que se puede hacer desde aquí sale con su botón, y " +
+                "siempre te lo pregunto antes de hacerlo. Si me dices \"recuerda que...\" lo " +
+                "apunto y no se me olvida.");
+}
+
+// Una fecha en palabras. Un apunte SIN fecha se lee como vigente hoy aunque sea de hace un mes,
+// y esa es justo la forma en que una memoria acaba mintiendo con seguridad.
+function cuando(marca) {
+  if (!marca) return "hace tiempo";
+  const seg = Date.now() / 1000 - marca;
+  if (seg < 3600) return "hace " + Math.max(1, Math.round(seg / 60)) + " min";
+  if (seg < 86400) return "hace " + Math.round(seg / 3600) + " h";
+  if (seg < 172800) return "ayer";
+  const d = new Date(marca * 1000);
+  return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
 }
 
 // ---------------------------------------------------------------- lo primero de la mañana
@@ -1242,6 +1269,7 @@ async function pintaAvisos() {
     } catch (err) { off.disabled = false; off.textContent = "no he podido"; }
   };
   pintaLaCara();
+  pintaMemoria();
 }
 
 // El Face ID dado de alta, con su baja. UNA credencial que se puede dar de alta y no de baja es
@@ -1281,6 +1309,76 @@ async function pintaLaCara() {
       try { localStorage.removeItem("zeno.cara.no"); } catch {}
       pintaAvisos();
     } catch (err) { off.disabled = false; off.textContent = "no he podido"; }
+  };
+}
+
+// LO QUE ZENO RECUERDA, con su fecha y su boton de borrar.
+//
+// Esta pantalla es la CONDICION para que la memoria exista, no un extra. Una memoria que no se
+// puede mirar acaba repitiendo como cierto algo que caduco hace semanas, y el operador no tiene
+// forma de saber de donde salio. Por eso cada apunte lleva cuando se apunto y si lo dijo el o
+// salio de una accion.
+async function pintaMemoria() {
+  const caja = $("#caja-avisos");
+  if (!caja) return;
+  let e;
+  try { e = await api("/api/memoria"); } catch { return; }
+  const apuntes = e.apuntes || [];
+
+  const bloque = document.createElement("div");
+  bloque.className = "avisos";
+  bloque.style.marginTop = "10px";
+  bloque.style.flexDirection = "column";
+  bloque.style.alignItems = "stretch";
+
+  let h = '<div class="c" style="display:flex;align-items:center;gap:8px">' +
+          "<b style=\"flex:1\">Lo que recuerdo</b>" +
+          (apuntes.length
+            ? '<span style="color:var(--gris);font-size:11.5px">' + apuntes.length + "</span>"
+            : "") + "</div>";
+  h += '<span style="color:var(--gris);font-size:11.5px;line-height:1.35;display:block">' +
+       (apuntes.length
+         ? "solo lo que me has pedido apuntar. Dime “recuerda que…” en el chat"
+         : "dime “recuerda que…” en el chat y lo apunto aquí") + "</span>";
+
+  if (apuntes.length) {
+    h += '<div id="lista-memoria" style="margin-top:8px;display:flex;flex-direction:column;gap:6px">';
+    for (const a of apuntes)
+      h += '<div class="ficha" style="align-items:flex-start;gap:8px">' +
+           '<span style="flex:1;min-width:0">' + esc(a.texto) +
+           '<span style="display:block;color:var(--apagado);font-size:11px;margin-top:2px">' +
+           cuando(a.cuando) + (a.origen === "dicho" ? "" : " · de una acción") + "</span></span>" +
+           '<button class="b sin" data-olvidar="' + esc(a.id) +
+           '" style="flex:0 0 auto;padding:4px 8px;font-size:11.5px">Borrar</button></div>';
+    h += "</div>";
+  }
+  if (e.turnos)
+    h += '<button class="b sin" id="hilo-borrar" style="margin-top:8px">' +
+         "Empezar conversación de cero (" + e.turnos + " mensajes)</button>";
+
+  bloque.innerHTML = h;
+  caja.appendChild(bloque);
+
+  for (const b of bloque.querySelectorAll("[data-olvidar]"))
+    b.onclick = async () => {
+      b.disabled = true; b.textContent = "…";
+      try {
+        await api("/api/memoria/" + encodeURIComponent(b.dataset.olvidar), { method: "DELETE" });
+        pintaAvisos();
+      } catch (err) { b.disabled = false; b.textContent = "no he podido"; }
+    };
+  const hb = bloque.querySelector("#hilo-borrar");
+  if (hb) hb.onclick = async () => {
+    // Se pregunta: borrar la conversacion no se deshace. No toca los apuntes, y eso se dice,
+    // porque si no nadie se atreve a pulsarlo y el hilo viejo acaba ensuciando las respuestas.
+    if (!confirm("¿Empezar de cero? Se borra lo hablado. Lo que te he pedido recordar se queda."))
+      return;
+    hb.disabled = true; hb.textContent = "borrando…";
+    try {
+      await api("/api/hilo", { method: "DELETE" });
+      $("#burbujas").innerHTML = "";
+      pintaAvisos();
+    } catch (err) { hb.disabled = false; hb.textContent = "no he podido"; }
   };
 }
 

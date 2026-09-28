@@ -97,6 +97,9 @@ def test_la_lista_de_endpoints_que_escriben_es_cerrada():
         "entrar_con_clave",  # cambia la clave propia por un token
         "google_conectar",   # devuelve la direccion de Google; no toca ninguna cola
         "google_olvidar",    # retira un permiso; solo quita
+        "api_memoria_apunta",  # guarda un apunte en el fichero de Zeno. No sale a la red
+        "api_memoria_olvida",  # lo tacha. Sin esto la memoria no se podria corregir
+        "api_hilo_borra",    # corta la conversacion guardada. No toca los apuntes
         "login", "login_2fa", "pin_abrir", "salir",
     ]
     assert sorted(posts) == sorted(permitidos), (
@@ -362,7 +365,7 @@ def test_las_ventas_no_se_pasan_como_json_crudo():
     assert "json.dumps(ventas" not in fuente, "las ventas vuelven a ir en crudo"
 
 
-def test_responde_le_pasa_de_verdad_el_estado_al_contexto():
+def test_responde_le_pasa_de_verdad_el_estado_al_contexto(monkeypatch):
     """EL FALLO QUE HIZO FALTA TRES INTENTOS (2026-09-27).
 
     `responde()` recibía `estado` y `ventas` y NO se los pasaba a `_contexto()`: el reemplazo de esa
@@ -371,12 +374,41 @@ def test_responde_le_pasa_de_verdad_el_estado_al_contexto():
     las dos mitades. Por eso pasaban con el fallo dentro.
 
     Se ve preguntándole por la caja: el contexto la tiene y el chat decía que no.
+
+    SE COMPRUEBA SOBRE LA LLAMADA DE VERDAD, no sobre el texto del fuente. La primera version
+    buscaba la linea literal `_contexto(pendientes, colas, ...)` y se rompio sola el 28-sep al
+    anadir dos argumentos mas: un guardian que hay que reescribir cada vez que cambia una firma
+    acaba relajandose hasta no comprobar nada. Aqui se mira lo unico que importa, que es lo que
+    llega al modelo.
     """
-    import inspect
+    import json as _json
     from servicio import chat as m
-    fuente = inspect.getsource(m.responde)
-    assert "_contexto(pendientes, colas, fallos, documentos, estado, ventas)" in fuente, (
-        "responde() recibe el estado y no se lo pasa al contexto: el chat se queda ciego")
+
+    visto = {}
+
+    class _R:
+        def read(self): return _json.dumps(
+            {"content": [{"type": "text", "text": "ok"}],
+             "usage": {"input_tokens": 10, "output_tokens": 5}}).encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def _falso(req, timeout=0):
+        visto["cuerpo"] = _json.loads(req.data)
+        return _R()
+
+    monkeypatch.setattr(m.urllib.request, "urlopen", _falso)
+    monkeypatch.setattr(m, "CLAVE_ANTHROPIC", "de-mentira")
+    m.responde("y la caja?", [], [], [], [],
+               estado={"zenvrax": {"negocios": [{"nombre": "Zenvrax", "sub": "consultoria",
+                                                 "kpis": [{"k": "Caja", "v": "$1,150"}]}]}},
+               ventas={"resumen": {"revenue": 0, "orders": 0}},
+               recuerdos="LO QUE EL OPERADOR TE HA PEDIDO RECORDAR: los arcos son de dos",
+               hechos=[{"titulo": "post de X aprobado", "resultado": "hecho", "cuando": 1}])
+    mandado = visto["cuerpo"]["messages"][-1]["content"]
+    for trozo in ("Caja", "$1,150", "VENTAS DE GUTLYN", "los arcos son de dos",
+                  "post de X aprobado"):
+        assert trozo in mandado, f"el chat se queda ciego: no le llega {trozo}"
 
 
 # ---------------------------------------------------------------- la vuelta de Google
@@ -720,3 +752,148 @@ def test_una_cuenta_sin_conectar_no_sale_como_falta_de_permisos(monkeypatch):
     monkeypatch.setattr(api_mod.google, "conectadas", lambda: {})
     c = cliente.get("/api/google/cuentas", headers=CABECERA).json()["cuentas"][0]
     assert c["conectada"] is False and c["faltan"] == []
+
+
+# ---------------------------------------------------------------- lo que Zeno recuerda
+
+@pytest.fixture()
+def _memoria_limpia(tmp_path, monkeypatch):
+    """La memoria real escribe en /datos, que aquí no existe. Sin esto los tests pasarían por el
+    camino silencioso del `except OSError` y no comprobarían nada."""
+    monkeypatch.setattr(api_mod.memoria, "FICHERO", tmp_path / "memoria.jsonl")
+    monkeypatch.setattr(api_mod.memoria, "HILO", tmp_path / "conversacion.jsonl")
+    return api_mod.memoria
+
+
+@pytest.fixture()
+def _chat_encendido(monkeypatch):
+    monkeypatch.setattr(api_mod, "CHAT_ACTIVO", True)
+    monkeypatch.setattr(lector, "pendientes", lambda: ([], {}, []))
+    monkeypatch.setattr(lector, "estado", lambda: ({}, []))
+    monkeypatch.setattr(lector, "ventas_gutlyn", lambda: ({}, []))
+
+
+def test_pedirle_que_recuerde_algo_no_gasta_api(monkeypatch, _memoria_limpia, _chat_encendido):
+    """EL PUNTO DE TODO ESTO. Pasar "recuerda que los arcos son de dos" por Haiku costaría dinero
+    para que parafrasee una orden que ya está clara, y con el riesgo de que guarde SU versión en
+    vez de las palabras del operador. Se reconoce con reglas y se guarda tal cual."""
+    llamadas = []
+    monkeypatch.setattr(api_mod.chat_mod, "responde",
+                        lambda *a, **k: llamadas.append(1) or {"respuesta": "x"})
+    r = cliente.post("/api/chat", json={"texto": "recuerda que los arcos son de dos mensajes"},
+                     headers=CABECERA)
+    assert r.status_code == 200
+    assert llamadas == [], "pasó por el modelo un apunte que no lo necesita"
+    assert r.json()["coste_usd"] == 0.0
+    assert [a["texto"] for a in _memoria_limpia.apuntes()] == ["Los arcos son de dos mensajes"]
+
+
+def test_una_pregunta_de_verdad_si_pasa_por_el_modelo(monkeypatch, _memoria_limpia,
+                                                      _chat_encendido):
+    """El guardián de arriba, con el fallo dentro: si el reconocedor se pasara de listo y se
+    tragara las preguntas normales, el chat dejaría de contestar y diría apuntado a todo."""
+    monkeypatch.setattr(api_mod.chat_mod, "responde",
+                        lambda *a, **k: {"respuesta": "cero ventas", "coste_usd": 0.002})
+    r = cliente.post("/api/chat", json={"texto": "cómo van las ventas"}, headers=CABECERA)
+    assert r.json()["respuesta"] == "cero ventas"
+    assert _memoria_limpia.apuntes() == [], "una pregunta normal no es un apunte"
+
+
+def test_la_conversacion_se_guarda_para_manana(monkeypatch, _memoria_limpia, _chat_encendido):
+    monkeypatch.setattr(api_mod.chat_mod, "responde",
+                        lambda *a, **k: {"respuesta": "cero ventas", "coste_usd": 0.002})
+    cliente.post("/api/chat", json={"texto": "cómo van las ventas"}, headers=CABECERA)
+    assert [(t["de"], t["texto"]) for t in _memoria_limpia.hilo()] == [
+        ("tu", "cómo van las ventas"), ("zeno", "cero ventas")]
+
+
+def test_si_la_respuesta_falla_no_queda_media_conversacion(monkeypatch, _memoria_limpia,
+                                                           _chat_encendido):
+    """Al volver mañana, un turno tuyo sin contestar se leería como algo que quedó pendiente, y el
+    modelo arrancaría respondiendo a una pregunta que nunca llegó a contestarse."""
+    def _revienta(*a, **k):
+        raise api_mod.chat_mod.SinClaveDeIA("no hay clave")
+
+    monkeypatch.setattr(api_mod.chat_mod, "responde", _revienta)
+    assert cliente.post("/api/chat", json={"texto": "y las ventas"},
+                        headers=CABECERA).status_code == 503
+    assert _memoria_limpia.hilo() == []
+
+
+def test_al_abrir_la_aplicacion_se_retoma_lo_hablado(monkeypatch, _memoria_limpia,
+                                                     _chat_encendido):
+    """Sin turnos del front (acaba de abrir la aplicación) el chat parte de lo guardado. Este es
+    literalmente el "que la conversación siga donde la dejaste" que se pidió."""
+    _memoria_limpia.guarda_turno("tu", "cuántos DMs quedan")
+    _memoria_limpia.guarda_turno("zeno", "quince")
+    visto = {}
+    monkeypatch.setattr(api_mod.chat_mod, "responde",
+                        lambda *a, **k: visto.update(k) or {"respuesta": "ok", "coste_usd": 0})
+    cliente.post("/api/chat", json={"texto": "y mañana"}, headers=CABECERA)
+    assert [t["texto"] for t in visto["turnos"]] == ["cuántos DMs quedan", "quince"]
+
+
+def test_los_turnos_de_la_pantalla_mandan_sobre_los_guardados(monkeypatch, _memoria_limpia,
+                                                              _chat_encendido):
+    """Lo que el operador está viendo es la verdad. Si lo guardado pisara la pantalla, el chat
+    contestaría a una conversación distinta de la que él tiene delante."""
+    _memoria_limpia.guarda_turno("tu", "de ayer")
+    visto = {}
+    monkeypatch.setattr(api_mod.chat_mod, "responde",
+                        lambda *a, **k: visto.update(k) or {"respuesta": "ok", "coste_usd": 0})
+    cliente.post("/api/chat", json={"texto": "y ahora",
+                                    "turnos": [{"de": "tu", "texto": "de la pantalla"}]},
+                 headers=CABECERA)
+    assert [t["texto"] for t in visto["turnos"]] == ["de la pantalla"]
+
+
+def test_el_chat_recibe_lo_recordado_y_el_diario(monkeypatch, _memoria_limpia, _chat_encendido):
+    """El diario existía desde J4 y el chat no lo veía: preguntarle qué he aprobado hoy era
+    preguntarle a alguien que no estaba delante."""
+    monkeypatch.setattr(api_mod.diario, "lee", lambda n=40: [{"titulo": "post de X"}])
+    _memoria_limpia.apunta("los arcos son de dos")
+    visto = {}
+    monkeypatch.setattr(api_mod.chat_mod, "responde",
+                        lambda *a, **k: visto.update(k) or {"respuesta": "ok", "coste_usd": 0})
+    cliente.post("/api/chat", json={"texto": "qué he hecho hoy"}, headers=CABECERA)
+    assert "los arcos son de dos" in visto["recuerdos"]
+    assert visto["hechos"] == [{"titulo": "post de X"}]
+
+
+def test_la_memoria_se_puede_mirar_y_borrar(_memoria_limpia):
+    """Esta pantalla es la condición para que la memoria exista: una que no se puede corregir
+    acaba repitiendo como cierto algo que caducó hace semanas."""
+    r = cliente.post("/api/memoria", json={"texto": "GutLyn es mía"}, headers=CABECERA)
+    ident = r.json()["apunte"]["id"]
+    assert [a["texto"] for a in cliente.get("/api/memoria", headers=CABECERA).json()["apuntes"]] \
+        == ["GutLyn es mía"]
+    assert cliente.delete("/api/memoria/" + ident, headers=CABECERA).status_code == 200
+    assert cliente.get("/api/memoria", headers=CABECERA).json()["apuntes"] == []
+
+
+def test_borrar_la_conversacion_no_borra_los_apuntes(_memoria_limpia):
+    """Si empezar de cero se llevara por delante lo que pidió recordar, nadie volvería a
+    pulsarlo, y el hilo viejo acabaría ensuciando todas las respuestas."""
+    cliente.post("/api/memoria", json={"texto": "GutLyn es mía"}, headers=CABECERA)
+    _memoria_limpia.guarda_turno("tu", "hola")
+    assert cliente.delete("/api/hilo", headers=CABECERA).status_code == 200
+    assert cliente.get("/api/hilo", headers=CABECERA).json()["turnos"] == []
+    assert len(cliente.get("/api/memoria", headers=CABECERA).json()["apuntes"]) == 1
+
+
+def test_un_apunte_vacio_no_se_guarda(_memoria_limpia):
+    assert cliente.post("/api/memoria", json={"texto": "  "}, headers=CABECERA).status_code == 422
+    assert _memoria_limpia.apuntes() == []
+
+
+def test_la_memoria_no_se_mira_sin_sesion(monkeypatch, _memoria_limpia):
+    """Lo que el operador pide recordar son sus decisiones y sus datos: no es menos privado que
+    el correo."""
+    def _no(t, ahora=None):
+        raise sesion.NoAutenticado("no")
+
+    monkeypatch.setattr(sesion, "quien_es", _no)
+    for metodo, ruta in (("get", "/api/memoria"), ("delete", "/api/memoria/x"),
+                         ("get", "/api/hilo"), ("delete", "/api/hilo")):
+        assert getattr(cliente, metodo)(ruta).status_code == 401, ruta
+    assert cliente.post("/api/memoria", json={"texto": "x"}).status_code == 401

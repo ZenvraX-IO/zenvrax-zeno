@@ -35,8 +35,8 @@ sys.path.insert(0, str(RAIZ))
 
 import lector                                    # noqa: E402
 from servicio import (avisos, chat as chat_mod, citas, clave as clave_mod,  # noqa: E402
-                      correo, diario, ejecutor, empuje, google, ordenes, personal,
-                      ronda, rostro, sesion)
+                      correo, diario, ejecutor, empuje, google, memoria, ordenes,
+                      personal, ronda, rostro, sesion)
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -586,9 +586,10 @@ class Turno(BaseModel):
 
 class Pregunta(BaseModel):
     texto: str
-    #: Lo hablado antes en esta conversacion. Lo manda el FRONT, que es quien la tiene en pantalla:
-    #: guardarla en el servidor seria estado nuevo que hay que limpiar, y ademas la conversacion se
-    #: acaba al cerrar la aplicacion, asi que no hay nada que persistir.
+    #: Lo hablado antes en esta conversacion, tal como esta en pantalla. Sigue mandandolo el front
+    #: porque es la verdad de lo que el operador esta viendo. Desde el 2026-09-28 tambien se guarda
+    #: en el servidor: la razon por la que no se guardaba ("la conversacion se acaba al cerrar la
+    #: aplicacion") era precisamente el problema, no el motivo.
     turnos: list[Turno] = []
 
 
@@ -608,6 +609,19 @@ async def chat(body: Pregunta, authorization: str = Header(default="")):
     if len(pregunta) < 2:
         raise HTTPException(422, "escribe la pregunta")
 
+    # "RECUERDA QUE..." NO GASTA API. Se reconoce con reglas, se guarda tal cual lo dijo y se
+    # contesta desde aquí. Pasarlo por el modelo costaría dinero para que parafrasease una orden
+    # que ya está clara, y encima con el riesgo de que guardase su versión en vez de la suya.
+    esto = memoria.es_para_recordar(pregunta)
+    if esto:
+        apunte = memoria.apunta(esto, origen="dicho")
+        memoria.guarda_turno("tu", pregunta)
+        respuesta = f"Apuntado: {esto}"
+        memoria.guarda_turno("zeno", respuesta)
+        return {"respuesta": respuesta, "modelo": "(sin modelo)", "coste_usd": 0.0,
+                "apuntado": apunte,
+                "preguntas_hoy": chat_mod.preguntas_hoy(), "tope_diario": chat_mod.TOPE_DIARIO}
+
     lista, _, fallos = lector.pendientes()
     colas, fallos_colas = lector.pendiente_completo()
     # El ESTADO va siempre. El operador pregunto por las ventas de GutLyn y el chat contesto que no
@@ -624,14 +638,77 @@ async def chat(body: Pregunta, authorization: str = Header(default="")):
                                            "fórmula", "politica", "política")):
         documentos, _, mas_fallos = lector.documentacion(pregunta)
         fallos_colas = fallos_colas + mas_fallos
+    # Los turnos de la PANTALLA mandan: es lo que el operador esta viendo. Solo cuando no manda
+    # ninguno (acaba de abrir la aplicacion) se recupera lo hablado la ultima vez, que es justo el
+    # caso que hacia que Zeno se olvidara de todo entre sesiones.
+    turnos = [t.model_dump() for t in body.turnos] or memoria.hilo()
     try:
-        return chat_mod.responde(pregunta, lista, colas, fallos + fallos_colas,
-                                 documentos, estado, ventas,
-                                 turnos=[t.model_dump() for t in body.turnos])
+        salida = chat_mod.responde(pregunta, lista, colas, fallos + fallos_colas,
+                                   documentos, estado, ventas, turnos=turnos,
+                                   recuerdos=memoria.para_el_contexto(),
+                                   hechos=diario.lee(12))
     except chat_mod.TopeAlcanzado as e:
         raise HTTPException(429, f"Tope diario de preguntas alcanzado ({e})") from e
     except chat_mod.SinClaveDeIA as e:
         raise HTTPException(503, str(e)) from e
+    # SOLO SE GUARDA LO QUE SALIO BIEN. Una pregunta cuya respuesta fallo no deja media
+    # conversacion escrita: al volver manana, el hilo tendria un turno tuyo sin contestar y el
+    # modelo lo leeria como algo que quedo pendiente.
+    memoria.guarda_turno("tu", pregunta)
+    memoria.guarda_turno("zeno", salida.get("respuesta", ""))
+    return salida
+
+
+# ---------------------------------------------------------------- lo que Zeno recuerda
+
+class Apunte(BaseModel):
+    texto: str
+
+
+@app.get("/api/memoria")
+async def api_memoria(authorization: str = Header(default="")):
+    """Todo lo que Zeno recuerda, para poder mirarlo y borrarlo.
+
+    ESTA PANTALLA ES LA CONDICION para que la memoria exista. Una memoria que no se puede ver
+    acaba repitiendo como cierto algo que caduco hace semanas, y el operador no tiene forma de
+    saber de donde salio. Por eso cada apunte lleva su fecha y su origen.
+    """
+    _quien(authorization)
+    return {"apuntes": memoria.apuntes(), "turnos": len(memoria.hilo(999)),
+            "ultima_vez": memoria.cuando_fue_lo_ultimo()}
+
+
+@app.post("/api/memoria")
+async def api_memoria_apunta(body: Apunte, authorization: str = Header(default="")):
+    """Apunta algo a mano, sin pasar por el chat. No gasta nada."""
+    _quien(authorization)
+    texto = (body.texto or "").strip()
+    if len(texto) < 2:
+        raise HTTPException(422, "escribe qué quieres que recuerde")
+    return {"apunte": memoria.apunta(texto, origen="dicho")}
+
+
+@app.delete("/api/memoria/{ident}")
+async def api_memoria_olvida(ident: str, authorization: str = Header(default="")):
+    """Olvida un apunte. Se tacha, no se reescribe el fichero."""
+    _quien(authorization)
+    memoria.olvida(ident)
+    return {"olvidado": ident}
+
+
+@app.delete("/api/hilo")
+async def api_hilo_borra(authorization: str = Header(default="")):
+    """Corta la conversacion guardada y empieza de cero. No toca los apuntes."""
+    _quien(authorization)
+    memoria.olvida_el_hilo()
+    return {"ok": True}
+
+
+@app.get("/api/hilo")
+async def api_hilo(authorization: str = Header(default="")):
+    """Lo ultimo que se hablo, para repintarlo al abrir la aplicacion."""
+    _quien(authorization)
+    return {"turnos": memoria.hilo(), "ultima_vez": memoria.cuando_fue_lo_ultimo()}
 
 
 # ---------------------------------------------------------------- el correo y la agenda

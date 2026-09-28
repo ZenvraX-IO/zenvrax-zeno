@@ -84,6 +84,15 @@ REGLAS:
   - Lo que publica hacia fuera (LinkedIn, X, Meta, correo) es irreversible. Nombralo como tal.
   - Nunca propongas ejecutar una accion tu mismo: todavia no puedes. Di donde esta el boton.
   - En español, directo, sin rodeos ni disculpas. Frases cortas. Sin asteriscos y sin raya larga.
+
+LO QUE RECUERDAS, si viene en el contexto:
+  - Lo que el operador te pidio recordar son SUS palabras y SUS decisiones. Valen. Si algo que ibas
+    a decir las contradice, ganan ellas, y dilo: "tienes apuntado que...".
+  - Lo que hiciste (el diario) es lo que salio DESDE ZENO, no todo lo que se aprobo: el operador
+    tambien trabaja desde el cockpit y desde Xrise. No digas "no has hecho nada hoy" porque tu
+    diario este vacio; di que desde Zeno no salio nada.
+  - Cada apunte lleva fecha. Uno de hace semanas puede haber caducado: si la respuesta depende de
+    eso, di cuando se apunto en vez de darlo por vigente hoy.
 """
 
 
@@ -161,8 +170,34 @@ def _ventas(ventas: dict) -> str:
     return "\n".join(lineas)
 
 
+def _lo_hecho(hechos: list | None) -> str:
+    """El diario en texto. Lo que Zeno hizo, con su fecha y como acabo.
+
+    ESTO YA SE GUARDABA Y NADIE LO LEIA. El diario existe desde que Zeno publica en nombre del
+    operador, pero el chat no lo veia: preguntarle "que he aprobado hoy" era preguntarle a alguien
+    que no estaba delante. Se pasa recortado, que es lo unico que hacia falta.
+    """
+    if not hechos:
+        return ""
+    from datetime import datetime
+    lineas = []
+    for h in hechos[:12]:
+        try:
+            cuando = datetime.fromtimestamp(h.get("cuando", 0)).strftime("%d-%b %H:%M")
+        except (ValueError, OSError, TypeError):
+            cuando = "?"
+        como = {"hecho": "", "error": "  (FALLO)",
+                "no_se_sabe": "  (NO SE SABE si salio: hay que comprobarlo)"}.get(
+                    h.get("resultado"), "")
+        marca = " [salio al mundo]" if h.get("publica") else ""
+        lineas.append(f"    {cuando}  {h.get('titulo') or h.get('etiqueta')}{marca}{como}")
+    return ("LO QUE HAS HECHO TU DESDE ZENO (no incluye lo que el aprobo en el cockpit o en "
+            "Xrise):\n" + "\n".join(lineas))
+
+
 def _contexto(pendientes: list, colas: list, fallos: list, documentos: list,
-              estado: dict | None = None, ventas: dict | None = None) -> str:
+              estado: dict | None = None, ventas: dict | None = None,
+              recuerdos: str = "", hechos: list | None = None) -> str:
     """Todo lo que Zeno sabe, en texto.
 
     EL ESTADO Y LAS VENTAS ENTRAN AQUI desde el 2026-09-27. Antes solo iban lo pendiente y las
@@ -171,6 +206,10 @@ def _contexto(pendientes: list, colas: list, fallos: list, documentos: list,
     negocio no es un asistente, es una bandeja.
     """
     partes = []
+    # LOS RECUERDOS VAN LOS PRIMEROS, antes incluso de los avisos de fuentes caidas: son las reglas
+    # que el operador te ha dado y condicionan como se lee todo lo que viene detras.
+    if recuerdos:
+        partes.append(recuerdos)
     if fallos:
         partes.append("FUENTES QUE NO HAN RESPONDIDO (dilo si das numeros): " + " | ".join(fallos))
 
@@ -203,6 +242,9 @@ def _contexto(pendientes: list, colas: list, fallos: list, documentos: list,
         partes.append("DE LA DOCUMENTACION:\n" + "\n".join(
             f"  {d.get('title') or d.get('doc')}: {(d.get('sub') or '')[:180]}"
             for d in documentos[:4]))
+    hecho = _lo_hecho(hechos)
+    if hecho:
+        partes.append(hecho)
     return "\n\n".join(partes) or "(sin datos: dilo)"
 
 
@@ -241,7 +283,8 @@ def _historial(turnos: list | None) -> list:
 
 def responde(pregunta: str, pendientes: list, colas: list, fallos: list,
              documentos: list, estado: dict | None = None,
-             ventas: dict | None = None, turnos: list | None = None) -> dict:
+             ventas: dict | None = None, turnos: list | None = None,
+             recuerdos: str = "", hechos: list | None = None) -> dict:
     """Una respuesta y lo que ha costado. Lanza si falta la clave o se alcanzó el tope.
 
     `turnos` es lo hablado antes en esta misma conversacion. Sin ello cada pregunta partia de cero y
@@ -264,7 +307,7 @@ def responde(pregunta: str, pendientes: list, colas: list, fallos: list,
         # contestara a la tercera pregunta con los datos de hace diez minutos sin saberlo.
         "messages": _historial(turnos) + [
             {"role": "user",
-             "content": f"{_contexto(pendientes, colas, fallos, documentos, estado, ventas)}\n\n"
+             "content": f"{_contexto(pendientes, colas, fallos, documentos, estado, ventas, recuerdos, hechos)}\n\n"
                         f"PREGUNTA: {pregunta}"}],
     }).encode()
     req = urllib.request.Request(
