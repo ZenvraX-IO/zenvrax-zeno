@@ -132,3 +132,18 @@ def test_lo_que_pasa_por_un_modelo_espera_mas_que_lo_que_solo_lee():
     # rinde antes, corta una respuesta que iba a llegar.
     assert largo >= 65000, "el navegador se rinde antes que el servidor y corta respuestas buenas"
     assert '"/api/chat"' in h, "el chat no esta entre las que pueden tardar"
+
+
+def test_ningun_id_se_repite_en_la_pagina():
+    """EL FALLO. Al abrir las colas en una capa quedaron DOS elementos con id "confirmar-accion",
+    uno en la vista de debajo y otro en la capa. `querySelector` devuelve el primero, asi que
+    pulsar un boton dentro de una cola pintaba la confirmacion detras de la capa: invisible.
+    Pulsar y que no pase nada visible es la peor forma de fallar en algo que publica.
+
+    Se mira TODA la pagina y no solo ese id: el patron se repite en cuanto se duplica un bloque.
+    """
+    import collections
+    h = _html()
+    ids = re.findall(r'\bid="([a-zA-Z0-9_-]+)"', h)
+    repetidos = [i for i, n in collections.Counter(ids).items() if n > 1]
+    assert repetidos == [], f"ids repetidos en la pagina: {repetidos}"

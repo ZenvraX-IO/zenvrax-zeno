@@ -669,7 +669,7 @@ async function abreCola(cola, titulo) {
       });
       h += "</div></div>";
     });
-    $("#cola-cuerpo").innerHTML = h + '<div id="confirmar-accion"></div>';
+    $("#cola-cuerpo").innerHTML = h + '<div class="confirmar-aqui"></div>';
     $("#cola-cuerpo").querySelectorAll("[data-cola-accion]").forEach(b => b.onclick = () => {
       const [i, j] = b.dataset.colaAccion.split("-").map(Number);
       // El MISMO camino que en el resto: propone, enseña lo que va a pasar y espera el OK. Una
@@ -757,7 +757,7 @@ async function cargaPendientes() {
         html += "</div></div>";
       }
     }
-    c.innerHTML = html + '<div id="confirmar-accion"></div><div id="lo-hecho"></div>';
+    c.innerHTML = html + '<div class="confirmar-aqui"></div><div id="lo-hecho"></div>';
     pintaHecho();
     c.querySelectorAll("[data-aviso]").forEach(b => b.onclick = () => {
       const [i, j] = b.dataset.aviso.split("-").map(Number);
@@ -781,8 +781,17 @@ let pendientesEnPantalla = [];
 let avisosEnPantalla = [];
 let accionViva = null;
 
+// Donde se pinta la confirmacion: en la capa abierta si la hay, y si no en la vista de debajo.
+// Habia DOS elementos con el mismo id y `querySelector` devolvia el primero, o sea la de debajo:
+// pulsabas un boton dentro de una cola y la confirmacion aparecia detras, invisible. Pulsar y que
+// no pase nada visible es la peor forma de fallar en algo que publica.
+function dondeConfirmar() {
+  const capa = document.querySelector(".capa:not([hidden]) .confirmar-aqui");
+  return capa || document.querySelector(".confirmar-aqui");
+}
+
 async function proponeAccion(pendiente, accion) {
-  const caja = $("#confirmar-accion");
+  const caja = dondeConfirmar();
   try {
     const pr = await api("/api/accion/proponer", { method: "POST", body: JSON.stringify({
       op: accion.op, etiqueta: accion.etiqueta, url: accion.url, efecto: accion.efecto,
@@ -829,14 +838,14 @@ async function haceAccion() {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || ("error " + r.status));
     accionViva = null;
-    $("#confirmar-accion").innerHTML =
+    dondeConfirmar().innerHTML =
       '<div class="propuesta"><div class="q">Hecho: ' + esc(d.etiqueta) + "</div>" +
       '<div class="c">' + esc(d.titulo || "") + (d.salio_al_mundo ? " · ya está publicado" : "") +
       "</div></div>";
     cargaPendientes();
   } catch (e) {
     b.disabled = false; b.textContent = "Publicar";
-    $("#confirmar-accion").insertAdjacentHTML("beforeend",
+    dondeConfirmar().insertAdjacentHTML("beforeend",
       '<div class="aviso-fallo">' + esc(e.message) + "</div>");
   }
 }
@@ -1467,10 +1476,10 @@ async function cambiaCita(que, id) {
            "</b>. Eso no se puede deshacer.</div>";
     h += '<div class="btns"><button class="b primaria" id="cita-cambiar">' +
          (que === "mover" ? "Mover" : "Cancelar la cita") +
-         '</button><button class="b sin" id="cita-nada">Dejarlo</button></div></div>';
+         '</button><button class="b sin dejarlo">Dejarlo</button></div></div>';
     caja.innerHTML = h;
     caja.scrollIntoView({ block: "center" });
-    $("#cita-nada").onclick = () => { propuestaViva = null; caja.innerHTML = ""; };
+    caja.querySelector(".dejarlo").onclick = () => { propuestaViva = null; caja.innerHTML = ""; };
     $("#cita-cambiar").onclick = () => aplicaCambio();
   } catch (e) {
     caja.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
@@ -1589,10 +1598,10 @@ async function proponeCita(desde, minutos) {
     if ((p.choca_con || []).length)
       h += '<div class="ojo">Ojo: ya tienes algo en ese rato</div>';
     h += '<div class="btns"><button class="b primaria" id="cita-crear">Crear en el calendario' +
-         '</button><button class="b sin" id="cita-nada">Dejarlo</button></div></div>';
+         '</button><button class="b sin dejarlo">Dejarlo</button></div></div>';
     caja.innerHTML = h;
     $("#cita-crear").onclick = creaCita;
-    $("#cita-nada").onclick = () => { propuestaViva = null; caja.innerHTML = ""; };
+    caja.querySelector(".dejarlo").onclick = () => { propuestaViva = null; caja.innerHTML = ""; };
   } catch (e) {
     caja.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
   }
