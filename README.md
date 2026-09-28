@@ -23,10 +23,22 @@
 **Lo que NO hace, y es a propósito:** enviar correo, publicar por voz, y decidir con un modelo qué
 acción disparar (eso lo empareja `servicio/ordenes.py` con reglas).
 
-**La brecha conocida:** 113 cosas esperan el OK del operador y Zeno pone delante una. No es de
-Zeno: los feeds de aviso de los dos sistemas están hechos para dar una cosa al día (el de Xrise
-hace `LIMIT 1`) y el endpoint de colas devuelve el recuento, no los elementos. Cerrarlo es tocar
-cockpit y Xrise.
+## Las colas se abren enteras (28-sep)
+
+La brecha era esta: 113 cosas esperaban el OK del operador y Zeno ponía delante **una**, porque
+los feeds de aviso de los dos sistemas dan una cosa al día y el endpoint de colas devolvía el
+recuento, no los elementos.
+
+Cerrada del lado de **Zenvrax**: `GET /aios/cola/{cola}` entrega los elementos con sus acciones, y
+en Zeno la ficha "44 Posts de X sin publicar" se toca y salen los 44. Son 82 de las 113.
+
+**Lo que Zeno puede disparar ahí es solo lo reversible**, decidido por el operador: marcar
+publicado, cancelar un magnet, descartar un thread. La lista vive en el cockpit
+(`core/puerta_zeno.py`), ruta a ruta y con el cuerpo exacto, y es el cockpit quien marca cada
+acción con si Zeno puede: replicar esa regla aquí serían dos listas que se separan. Lo que
+publica no se ofrece como botón, lleva al cockpit.
+
+**Falta Xrise**, que sigue dando el recuento: las 31 de GutLyn se ven pero no se abren.
 
 **Zeno** es el nombre que eligió el operador el 2026-09-27 entre cuatro. Sale de Zenvrax y se queda
 en dos sílabas: la Z ata con la casa sin meterse en la línea X de los SaaS vendibles (Xrise, XSupport,
