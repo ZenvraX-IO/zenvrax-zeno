@@ -564,6 +564,22 @@ async function cargaPendientes() {
         </div>`;
       }
     }
+    // Los avisos que NO traen boton: no se deciden desde aqui, pero existen. Van al final y
+    // enlazan al sistema, para que Zeno no enseñe menos de lo que sabe.
+    const sueltos = d.avisos || [];
+    if (sueltos.length) {
+      html += '<div class="apartado">También avisan<span style="flex:1"></span>' +
+              '<span style="color:var(--apagado)">' + sueltos.length + "</span></div>";
+      for (const a of sueltos)
+        html += (a.url ? '<a class="ficha" href="' + esc(a.url) + '" target="_blank" ' +
+                         'rel="noopener" style="text-decoration:none;color:inherit">'
+                       : '<div class="ficha">') +
+                '<span style="width:3px;height:14px;border-radius:2px;flex:0 0 auto;' +
+                'background:' + (a.grave ? "var(--rojo)" : "var(--linea-fuerte)") + '"></span>' +
+                "<span>" + esc(a.titulo) + "</span>" +
+                '<span style="flex:1"></span><span style="color:var(--tenue);font-size:11px">' +
+                esc(a.negocio) + "</span>" + (a.url ? "</a>" : "</div>");
+    }
     c.innerHTML = html + '<div id="confirmar-accion"></div><div id="lo-hecho"></div>';
     pintaHecho();
     c.querySelectorAll("[data-hacer]").forEach(b => b.onclick = () => {

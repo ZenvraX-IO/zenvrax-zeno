@@ -190,10 +190,18 @@ def _filas(datos) -> list:
     return []
 
 
-def pendientes() -> tuple[list[Pendiente], list[str]]:
-    """Todo lo que espera una decision, de los dos negocios. Devuelve (lista, avisos de fallo)."""
+def pendientes() -> tuple[list[Pendiente], list[dict], list[str]]:
+    """Lo de los dos feeds, partido en dos: lo que se DECIDE y lo que solo AVISA.
+
+    Devuelve (para decidir, avisos sueltos, fallos). Los dos salen de la MISMA lectura: antes los
+    avisos se pedian por su cuenta y eso repetia las dos llamadas en cada carga de pantalla, y del
+    lado del cockpit cada una recalcula la agenda entera.
+
+    Los avisos sin boton no se pueden decidir desde aqui, pero existen: esconderlos hacia que el
+    cockpit enseñara ocho cosas y Zeno dos, que es como el operador descubrio que faltaban.
+    """
     indice = _indice_del_catalogo()
-    fuera, fallos = [], []
+    fuera, avisos, fallos = [], [], []
 
     datos, err = _seguro(COCKPIT, "/notifications?limit=60")
     if err:
@@ -202,8 +210,10 @@ def pendientes() -> tuple[list[Pendiente], list[str]]:
         for n in _filas(datos):
             acc = _acciones("cockpit", n.get("actions"), indice)
             if not acc:
-                continue                       # un aviso sin botones no espera una decision
-            fuera.append(Pendiente(negocio=NEGOCIO["cockpit"], titulo=n.get("title") or "?",
+                avisos.append(_aviso_suelto("cockpit", n))
+                continue
+            fuera.append(Pendiente(negocio=NEGOCIO["cockpit"],
+                                   titulo=sin_adornos(n.get("title")) or "?",
                                    cuerpo=(n.get("body") or "").strip(), acciones=acc,
                                    fuente="cockpit"))
 
@@ -214,14 +224,26 @@ def pendientes() -> tuple[list[Pendiente], list[str]]:
         for n in _filas(datos):
             acc = _acciones("xrise", n.get("actions"), indice)
             if not acc:
+                avisos.append(_aviso_suelto("xrise", n))
                 continue
-            fuera.append(Pendiente(negocio=NEGOCIO["xrise"], titulo=n.get("title") or "?",
+            fuera.append(Pendiente(negocio=NEGOCIO["xrise"],
+                                   titulo=sin_adornos(n.get("title")) or "?",
                                    cuerpo=(n.get("body") or "").strip(), acciones=acc,
                                    fuente="xrise"))
 
     # Primero lo que al aprobarlo sale al mundo: es lo que no se puede deshacer.
     fuera.sort(key=lambda p: (not p.publica_algo, p.negocio, p.titulo))
-    return fuera, fallos
+    return fuera, [a for a in avisos if a["titulo"]], fallos
+
+
+def _aviso_suelto(sistema: str, n: dict) -> dict:
+    """Un aviso que no trae boton: se enseña, pero no se decide desde aqui."""
+    return {
+        "negocio": NEGOCIO[sistema],
+        "titulo": sin_adornos(n.get("title") or n.get("label") or ""),
+        "grave": (n.get("severity") or n.get("tone")) in ("bad", "urgent", "error"),
+        "url": n.get("url") or n.get("link") or "",
+    }
 
 
 def estado() -> tuple[dict, list[str]]:

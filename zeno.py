@@ -29,7 +29,7 @@ def _linea_de_accion(etiqueta, op, efecto, cuesta) -> str:
 
 
 def cmd_pendientes() -> int:
-    lista, fallos = lector.pendientes()
+    lista, _avisos, fallos = lector.pendientes()
     for f in fallos:
         print(f"  NO SE HA PODIDO LEER  {f}")
     if not lista:

@@ -145,12 +145,13 @@ async def pendientes(authorization: str = Header(default="")):
     adivinar si una lista corta es "hay poco" o "no he podido leer la mitad".
     """
     _quien(authorization)
-    lista, fallos = lector.pendientes()
+    lista, avisos_sueltos, fallos = lector.pendientes()
     # Dos preguntas distintas en una respuesta: las COLAS dicen cuanto queda en total y el feed dice
     # que hacer ahora. Con solo el feed parecia que habia una cosa pendiente cuando habia 113.
     colas, fallos_colas = lector.pendiente_completo()
     return {
         "fallos": fallos + fallos_colas,
+        "avisos": avisos_sueltos,
         "colas": colas,
         "total_pendiente": sum(c["cuantos"] for c in colas),
         "pendientes": [{
@@ -441,7 +442,7 @@ async def chat(body: Pregunta, authorization: str = Header(default="")):
     if len(pregunta) < 2:
         raise HTTPException(422, "escribe la pregunta")
 
-    lista, fallos = lector.pendientes()
+    lista, _, fallos = lector.pendientes()
     colas, fallos_colas = lector.pendiente_completo()
     # El ESTADO va siempre. El operador pregunto por las ventas de GutLyn y el chat contesto que no
     # tenia el dato, teniendo Zeno la forma de leerlo: un asistente que no sabe como va el negocio

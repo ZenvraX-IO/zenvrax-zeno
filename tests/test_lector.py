@@ -69,7 +69,7 @@ def test_si_un_sistema_no_contesta_se_dice_y_no_se_calla(monkeypatch):
     monkeypatch.setattr(lector, "CLAVE", "x")
     monkeypatch.setattr(lector, "_pide", _finge({"/dashboard/notifications": [AVISO_XRISE]},
                                                fallan=("/notifications?limit",)))
-    lista, fallos = lector.pendientes()
+    lista, _avisos, fallos = lector.pendientes()
     assert len(lista) == 1, "lo que sí se pudo leer tiene que salir"
     assert any("cockpit" in f for f in fallos), (
         "el sistema que no contestó tiene que aparecer en los fallos, no desaparecer")
@@ -81,7 +81,7 @@ def test_una_accion_que_el_catalogo_no_reconoce_se_marca_y_no_se_oculta(monkeypa
     inventada = {"title": "Algo nuevo", "body": "", "actions": [{"label": "🆕 Boton recien puesto"}]}
     monkeypatch.setattr(lector, "_pide", _finge({"/dashboard/notifications": [inventada]},
                                                fallan=("/notifications?limit",)))
-    lista, _ = lector.pendientes()
+    lista, _avisos, _ = lector.pendientes()
     assert len(lista) == 1
     assert lista[0].sin_contrato == 1, "una acción sin contrato tiene que contarse"
     assert lista[0].acciones[0].op is None
@@ -106,7 +106,7 @@ def test_lo_que_sale_al_mundo_se_ordena_primero(monkeypatch):
         "/notifications?limit": [publica_cockpit],
         "/dashboard/notifications": [no_publica_xrise],
     }))
-    lista, fallos = lector.pendientes()
+    lista, _avisos, fallos = lector.pendientes()
     assert not fallos
     assert len(lista) == 2
     assert lista[0].publica_algo, "lo que publica va primero, aunque su negocio sea el último"
@@ -119,7 +119,7 @@ def test_marca_lo_que_cuesta_dinero(monkeypatch):
     monkeypatch.setattr(lector, "CLAVE", "x")
     monkeypatch.setattr(lector, "_pide", _finge({"/dashboard/notifications": [AVISO_XRISE]},
                                                fallan=("/notifications?limit",)))
-    lista, _ = lector.pendientes()
+    lista, _avisos, _ = lector.pendientes()
     assert lista[0].cuesta_dinero, "Regenerar gasta una llamada de pago y hay que decirlo"
 
 
@@ -334,7 +334,7 @@ def test_el_cockpit_devuelve_rows_y_no_items(monkeypatch):
         return {"items": []}, None
     monkeypatch.setattr(lector, "_seguro", falso)
     monkeypatch.setattr(lector, "_indice_del_catalogo", dict)
-    lista, fallos = lector.pendientes()
+    lista, _avisos, fallos = lector.pendientes()
     assert len(lista) == 1, "las filas del cockpit se estan tirando"
     assert lista[0].titulo == "Post de LinkedIn"
 
@@ -356,5 +356,31 @@ def test_un_feed_vacio_no_se_confunde_con_uno_que_no_se_pudo_leer(monkeypatch):
     una lista que no, y nadie mira que sean la misma fuente."""
     monkeypatch.setattr(lector, "_seguro", lambda b, r, c=None: ({"rows": []}, None))
     monkeypatch.setattr(lector, "_indice_del_catalogo", dict)
-    lista, fallos = lector.pendientes()
+    lista, _avisos, fallos = lector.pendientes()
     assert lista == [] and fallos == [], "vacio de verdad no es un fallo, y se distingue"
+
+
+def test_los_avisos_sin_boton_no_desaparecen(monkeypatch):
+    """EL OPERADOR LO ENCONTRO MIRANDO LAS DOS PANTALLAS: ocho avisos en el cockpit y dos en Zeno.
+
+    `pendientes()` se salta los que no traen boton con la regla "un aviso sin botones no espera una
+    decision". La regla es buena para la lista de decidir y mala como excusa para no enseñarlos: de
+    los ocho, siete no tenian boton, y entre ellos estaban sus tres tareas.
+    """
+    def falso(base, ruta, cab=None):
+        if base == lector.COCKPIT:
+            return {"rows": [
+                {"title": "\U0001f5c2\ufe0f Tarea \u2014 La landing inglesa", "severity": "urgent"},
+                {"title": "Con boton", "actions": [{"label": "Aprobar", "url": "x"}]}]}, None
+        return {"items": []}, None
+    monkeypatch.setattr(lector, "_seguro", falso)
+    _, avisos, fallos = lector.pendientes()
+    assert len(avisos) == 1, "el que tiene boton ya sale en la otra lista, no se repite"
+    assert avisos[0]["titulo"] == "Tarea, La landing inglesa", "y sin emoji ni raya larga"
+    assert avisos[0]["grave"] is True
+
+
+def test_un_aviso_sin_titulo_no_ocupa_una_linea_vacia(monkeypatch):
+    monkeypatch.setattr(lector, "_seguro",
+                        lambda b, r, c=None: ({"rows": [{"severity": "info"}]}, None))
+    assert lector.pendientes()[1] == []

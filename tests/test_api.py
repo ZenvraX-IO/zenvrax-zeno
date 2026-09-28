@@ -167,14 +167,14 @@ def test_el_chat_nace_apagado_porque_gasta_dinero():
 def test_los_fallos_viajan_siempre_aunque_esten_vacios(monkeypatch):
     """Si `fallos` solo apareciera cuando hay alguno, el front tendría que adivinar si una lista
     corta es "hay poco" o "no he podido leer la mitad"."""
-    monkeypatch.setattr(lector, "pendientes", lambda: ([], []))
+    monkeypatch.setattr(lector, "pendientes", lambda: ([], [], []))
     d = cliente.get("/api/pendientes", headers=CABECERA).json()
     assert "fallos" in d and d["fallos"] == []
 
 
 def test_un_sistema_caido_sale_en_la_respuesta(monkeypatch):
     monkeypatch.setattr(lector, "pendientes",
-                        lambda: ([], ["Zenvrax (cockpit): HTTP 502 en /notifications"]))
+                        lambda: ([], [], ["Zenvrax (cockpit): HTTP 502 en /notifications"]))
     d = cliente.get("/api/pendientes", headers=CABECERA).json()
     assert d["fallos"], "la caída no puede desaparecer entre la lectura y la respuesta"
 
@@ -185,7 +185,7 @@ def test_cada_pendiente_lleva_si_publica_y_si_cuesta(monkeypatch):
     p = lector.Pendiente(negocio="GutLyn", titulo="Post", cuerpo="", acciones=[
         lector.Accion("Aprobar y publicar", "claire.aprobar_y_publicar", "publica", False),
         lector.Accion("Regenerar", "claire.regenerar", "cambia_estado", True)])
-    monkeypatch.setattr(lector, "pendientes", lambda: ([p], []))
+    monkeypatch.setattr(lector, "pendientes", lambda: ([p], [], []))
     d = cliente.get("/api/pendientes", headers=CABECERA).json()["pendientes"][0]
     assert d["publica_algo"] is True and d["cuesta_dinero"] is True
     assert d["acciones"][0]["efecto"] == "publica"
@@ -623,7 +623,7 @@ def test_el_chat_manda_lo_hablado_antes(monkeypatch):
     """Sin esto, cada pregunta partia de cero y un "y eso cuanto es" no tenia a que referirse. Es
     como hablar con alguien a quien se le olvida entre frase y frase."""
     monkeypatch.setattr(api_mod, "CHAT_ACTIVO", True)
-    monkeypatch.setattr(lector, "pendientes", lambda: ([], []))
+    monkeypatch.setattr(lector, "pendientes", lambda: ([], [], []))
     monkeypatch.setattr(lector, "estado", lambda: ({}, []))
     monkeypatch.setattr(lector, "ventas_gutlyn", lambda: ({}, []))
     visto = {}
@@ -641,7 +641,7 @@ def test_sin_turnos_el_chat_sigue_funcionando(monkeypatch):
     """La primera pregunta de una conversacion no tiene historial, y una version vieja del front
     tampoco lo manda."""
     monkeypatch.setattr(api_mod, "CHAT_ACTIVO", True)
-    monkeypatch.setattr(lector, "pendientes", lambda: ([], []))
+    monkeypatch.setattr(lector, "pendientes", lambda: ([], [], []))
     monkeypatch.setattr(lector, "estado", lambda: ({}, []))
     monkeypatch.setattr(lector, "ventas_gutlyn", lambda: ({}, []))
     monkeypatch.setattr(api_mod.chat_mod, "responde", lambda *a, **k: {"respuesta": "ok"})
