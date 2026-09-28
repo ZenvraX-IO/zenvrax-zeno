@@ -169,3 +169,19 @@ def test_las_colas_de_hoy_se_pintan_desde_la_pantalla_que_las_enseña():
     assert "pintaColasDeHoy();" in h[i:fin], "no se pintan desde la pantalla de Trabajo"
     # Y en ningun otro sitio: dos llamadas serian dos peticiones por carga.
     assert h.count("pintaColasDeHoy();") == 1
+
+
+def test_una_fecha_no_se_enseña_en_crudo():
+    """Salia "2026-09-27T19:02:30.835273+00:00" en la cabecera de cada DM. Ademas de feo obliga a
+    descifrarla, y lo util no es el instante sino cuanto lleva esperando: hay respuestas de hace
+    tres semanas y eso es lo que tiene que saltar a la vista."""
+    h = _html()
+    assert "function desdeCuando(" in h
+    assert "desdeCuando(e.cuando)" in h, "la cola sigue pintando la fecha cruda"
+
+
+def test_no_se_manda_al_cockpit_lo_que_tiene_boton_para_ir():
+    """Decir "esto se hace en el cockpit" al lado de un boton que lleva justo al sitio donde se
+    hace es lo contrario de lo que se venia a arreglar."""
+    h = _html()
+    assert "!pintados && !e.donde && !e.copiar" in h

@@ -644,6 +644,18 @@ async function cargaColasAbribles() {
 //: La cola abierta ahora, para que los botones sepan a que elemento pertenecen.
 let colaEnPantalla = [];
 
+//: Cuanto lleva esperando algo, que es lo util. La fecha exacta no la lee nadie.
+function desdeCuando(cuando) {
+  const d = new Date(cuando);
+  if (isNaN(d)) return String(cuando).slice(0, 10);
+  const dias = Math.floor((Date.now() - d.getTime()) / 86400000);
+  if (dias <= 0) return "hoy";
+  if (dias === 1) return "ayer";
+  if (dias < 14) return "hace " + dias + " días";
+  if (dias < 60) return "hace " + Math.floor(dias / 7) + " semanas";
+  return "hace " + Math.floor(dias / 30) + " meses";
+}
+
 async function abreCola(cola, titulo) {
   const capa = $("#capa-cola");
   $("#cola-titulo").textContent = titulo || cola;
@@ -657,7 +669,7 @@ async function abreCola(cola, titulo) {
     if (!colaEnPantalla.length) h += '<div class="vacio">Nada aquí. Cola vacía.</div>';
     colaEnPantalla.forEach((e, i) => {
       h += '<div class="tarjeta"><div class="neg">' + esc(e.negocio) +
-           (e.cuando ? ' <span style="color:var(--apagado)">' + esc(e.cuando) + "</span>" : "") +
+           (e.cuando ? ' <span style="color:var(--apagado)">' + esc(desdeCuando(e.cuando)) + "</span>" : "") +
            "</div><div class=\"post\">" + esc(e.titulo) + "</div>" +
            (e.cuerpo ? '<div class="extracto">' + esc(e.cuerpo) + "</div>" : "") +
            '<div class="btns">' +
@@ -678,7 +690,7 @@ async function abreCola(cola, titulo) {
           pintados++;
         }
       });
-      if (!pintados)
+      if (!pintados && !e.donde && !e.copiar)
         h += '<span class="extracto">Esto se hace en el cockpit</span>';
       h += "</div></div>";
     });
