@@ -138,6 +138,25 @@
   .buscador:focus{outline:none;border-color:var(--ambar)}
   .limpiar{background:none;border:0;color:var(--gris);font-size:20px;width:40px;height:40px;
            flex:0 0 auto}
+
+  /* DICTADO. El operador pidio poder hablar en vez de escribir, en buscar y en preguntar: en el
+     movil, con una mano, escribir una pregunta larga es lo que hace que no se pregunte.
+     · 44px: es un boton de dedo, no de raton. Mas pequeño se falla y se acaba escribiendo igual.
+     · Mientras escucha se pone AMBAR y late. Un microfono abierto sin señal visible es la clase
+       de cosa que se queda encendida sin que nadie lo sepa.
+     · La animacion se apaga con prefers-reduced-motion, pero el color se queda: la señal no es
+       decorativa. */
+  .micro{width:44px;height:44px;border-radius:50%;background:var(--carbon);
+         border:1px solid var(--linea);color:var(--gris);font-size:17px;flex:0 0 auto;
+         display:flex;align-items:center;justify-content:center}
+  .micro[hidden]{display:none}
+  .micro.oyendo{background:var(--ambar);border-color:var(--ambar);color:#221a08}
+  .micro.oyendo{animation:late 1.1s ease-in-out infinite}
+  @keyframes late{0%,100%{transform:scale(1)}50%{transform:scale(1.09)}}
+  @media (prefers-reduced-motion: reduce){ .micro.oyendo{animation:none} }
+  /* Lo que se va oyendo, en gris y en cursiva, para que no se confunda con lo ya escrito. */
+  .oyendo-texto{font-size:12.5px;color:var(--gris);font-style:italic;padding:0 13px 8px;
+                min-height:0}
   /* Cada resultado es una zona TOCABLE de 44px minimo, no una linea de texto. */
   .doc{display:block;text-decoration:none;color:inherit;background:var(--carbon);
        border:1px solid var(--linea);border-left:3px solid var(--ambar);border-radius:11px;
@@ -376,8 +395,10 @@
   <div class="cuerpo"><div id="burbujas" class="burbujas"></div></div>
   <div id="escribir" class="escribir">
     <input id="pregunta" placeholder="pregúntale lo que sea" autocomplete="off">
+    <button id="mic-pregunta" class="micro" hidden aria-label="Dictar la pregunta">🎤</button>
     <button id="enviar" class="enviar">↑</button>
   </div>
+  <div id="dice-pregunta" class="oyendo-texto"></div>
 </div>
 
 <div id="capa-buscar" class="capa" hidden>
@@ -391,7 +412,9 @@
              autocomplete="off" autocapitalize="off" autocorrect="off"
              placeholder="busca en la documentación">
       <button id="limpiar" class="limpiar" hidden aria-label="borrar">✕</button>
+      <button id="mic-q" class="micro" hidden aria-label="Buscar dictando">🎤</button>
     </div>
+    <div id="dice-q" class="oyendo-texto"></div>
     <div id="resultados"></div>
   </div>
 </div>
@@ -1576,6 +1599,94 @@ $("#resultados").onclick = (e) => {
   busca();
 };
 document.querySelectorAll(".pie button").forEach(b => b.onclick = () => ver(b.dataset.vista));
+// ------------------------------------------------------------------ dictado (hablar en vez de escribir)
+//
+// Lo pidio el operador: en el movil, con una mano, escribir una pregunta larga es justo lo que
+// hace que no se pregunte. Va en los dos sitios donde se escribe: buscar y preguntar.
+//
+// SE USA EL RECONOCIMIENTO DEL PROPIO NAVEGADOR y no una API de transcripcion. Dos razones, y la
+// segunda pesa mas que la primera:
+//   · No cuesta nada y no hace falta una clave nueva. Una API de voz se paga por minuto.
+//   · La voz no sale de donde ya esta. Mandar el audio a un tercero para transcribirlo es un
+//     proveedor mas con el que hablas de tus clientes, y eso se decide aparte, no de rebote.
+//
+// No lo tienen todos los navegadores (Firefox no). Cuando no esta, el boton NO se enseña: un
+// boton que no puede funcionar es peor que no tenerlo.
+const Voz = (() => {
+  const Motor = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let viva = null;                       // la sesion en curso, si la hay
+  return {
+    hay: !!Motor,
+    escuchando: () => !!viva,
+    para() { if (viva) { const v = viva; viva = null; try { v.stop(); } catch {} } },
+    // `alOir` recibe lo que se lleva oido y si es ya definitivo. `alAcabar` recibe el texto final
+    // o un mensaje de error, que NO es lo mismo que cadena vacia: callarse y fallar se ven igual
+    // desde fuera y hay que distinguirlos.
+    arranca(alOir, alAcabar) {
+      if (!Motor) { alAcabar("", "este navegador no sabe escuchar"); return; }
+      if (viva) { this.para(); return; }
+      const r = new Motor();
+      r.lang = "es-ES";
+      r.interimResults = true;           // se va viendo mientras hablas: sin esto parece colgado
+      r.continuous = false;              // una frase y para. Un microfono abierto se olvida abierto
+      r.maxAlternatives = 1;
+      let dicho = "", fallo = "";
+      r.onresult = (e) => {
+        let listo = "", enCurso = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const trozo = e.results[i][0].transcript;
+          if (e.results[i].isFinal) listo += trozo; else enCurso += trozo;
+        }
+        if (listo) dicho += listo;
+        alOir((dicho + enCurso).trim(), !enCurso);
+      };
+      r.onerror = (e) => {
+        // Se traduce a algo que se pueda leer: "not-allowed" en pantalla no dice que hacer.
+        fallo = { "not-allowed": "no has dado permiso al micrófono",
+                  "service-not-allowed": "el navegador no deja usar el micrófono aquí",
+                  "no-speech": "no he oído nada",
+                  "audio-capture": "no encuentro ningún micrófono",
+                  "network": "sin red para transcribir" }[e.error] || ("no he podido escuchar: " + e.error);
+      };
+      r.onend = () => { viva = null; alAcabar(dicho.trim(), fallo); };
+      viva = r;
+      try { r.start(); } catch (e) { viva = null; alAcabar("", "no he podido abrir el micrófono"); }
+    },
+  };
+})();
+
+// Engancha un boton de microfono a un campo. `alTerminar` se llama con el texto ya puesto en el
+// campo, para que buscar pueda lanzar la busqueda y el chat pueda NO enviar nada solo.
+function enchufaVoz(idBoton, idCampo, idDice, alTerminar) {
+  const b = $(idBoton), campo = $(idCampo), dice = $(idDice);
+  if (!b) return;
+  // El boton solo existe si el navegador sabe escuchar.
+  b.hidden = !Voz.hay;
+  if (!Voz.hay) return;
+  b.onclick = () => {
+    if (Voz.escuchando()) { Voz.para(); return; }
+    b.classList.add("oyendo");
+    dice.textContent = "escuchando…";
+    Voz.arranca(
+      (texto) => { dice.textContent = texto || "escuchando…"; },
+      (texto, fallo) => {
+        b.classList.remove("oyendo");
+        dice.textContent = fallo || "";
+        if (fallo) { setTimeout(() => { if (dice.textContent === fallo) dice.textContent = ""; }, 4000); return; }
+        if (!texto) return;
+        // Se AÑADE a lo que hubiera, no se pisa: puedes escribir media frase y dictar el resto.
+        campo.value = (campo.value.trim() ? campo.value.trim() + " " : "") + texto;
+        campo.focus();
+        if (alTerminar) alTerminar(campo.value);
+      });
+  };
+}
+
+enchufaVoz("#mic-q", "#q", "#dice-q", () => { $("#limpiar").hidden = false; busca(); });
+// En el chat el dictado deja la pregunta escrita y NO la manda. Cada pregunta cuesta dinero y una
+// transcripcion puede salir torcida: lo ultimo que quieres es pagar por una frase que no dijiste.
+enchufaVoz("#mic-pregunta", "#pregunta", "#dice-pregunta", null);
+
 $("#btn-chat").onclick = () => abreCapa("capa-chat");
 $("#btn-buscar").onclick = () => abreCapa("capa-buscar");
 document.querySelectorAll("[data-cerrar]").forEach(b =>
