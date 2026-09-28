@@ -19,6 +19,11 @@ from playwright.async_api import async_playwright
 TOKEN, FUERA = sys.argv[1], pathlib.Path(sys.argv[2])
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
+#: Modo ENSAYO, explicito. El paso 4 es el unico que gasta (una llamada a Haiku) y con `--ver` no
+#: se hace. Se declara con un flag y no solo con la variable de entorno porque el guardian del
+#: gasto necesita poder reconocer que este guion tiene ensayo antes de dejarlo correr de verdad.
+ENSAYO = any(x in sys.argv for x in ("--ver", "--probar", "--dry-run"))
+
 # Un reconocimiento de mentira: entrega la siguiente frase de la cola. Y una sintesis de mentira
 # que apunta lo que Zeno dice en alto, para poder leerlo despues.
 FINGIDO = """
@@ -88,7 +93,7 @@ async def main():
         # OJO: este paso necesita que exista una tarea de prueba llamada asi. Si no existe, la
         # orden no encaja, el "si, hazlo" cae al chat como si fuera una pregunta y GASTA sin que
         # nadie lo haya autorizado. Paso de verdad: 0,0017 USD en un ensayo que se creia gratis.
-        if os.environ.get("PERMITIR_GASTO_API") != "1":
+        if ENSAYO or os.environ.get("PERMITIR_GASTO_API") != "1":
             print("   saltado: sin la tarea de prueba creada, esto acabaria preguntando al chat")
             print("   (créala primero, o pásalo con el permiso de gasto delante)")
             dicho, burbujas = [], []
@@ -101,8 +106,9 @@ async def main():
         print()
         # El paso 4 es el UNICO que gasta: una pregunta al chat es una llamada a Haiku. Los dos de
         # arriba pasan por /api/orden, que empareja con reglas y cuesta cero.
-        if os.environ.get("PERMITIR_GASTO_API") != "1":
-            print("4) LA PREGUNTA AL CHAT: no se hace, cuesta 1 llamada de Haiku (~0,0005 USD)")
+        if ENSAYO or os.environ.get("PERMITIR_GASTO_API") != "1":
+            print("4) LA PREGUNTA AL CHAT: 1 llamada de Haiku pendiente, ~0,0005 USD")
+            print("   (ensayo: no se ha gastado nada)")
             await pag.screenshot(path=str(FUERA / "conversacion.png"))
             await nav.close()
             print()
