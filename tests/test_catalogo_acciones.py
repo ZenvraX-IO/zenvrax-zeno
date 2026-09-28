@@ -235,3 +235,12 @@ def test_sin_repos_el_catalogo_cae_al_congelado_y_no_a_una_lista_vacia(monkeypat
     acciones = C.catalogo()
     assert len(acciones) >= 30, (
         f"sin los repos tendría que usar el catálogo congelado y trajo {len(acciones)} acciones")
+
+
+# NOTA, 28-sep. Aqui se escribio un guardian nuevo contra las urls montadas por trozos, y sobraba
+# por dos razones. Una: hay dos acciones del cockpit ("Ver la carta", "Abrir guia de montaje")
+# que SON dinamicas de siempre y tienen su contrato declarado, asi que el guardian las marcaba
+# mal. Y dos: el caso ya estaba cubierto por `test_ningun_contrato_se_queda_sin_boton`, que fue
+# justamente quien lo pillo, con 23 tests en rojo a la vez.
+#
+# Lo que hay que mirar no es si la direccion es dinamica, sino si el boton se queda SIN contrato.

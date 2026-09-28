@@ -369,14 +369,14 @@ def colas_que_se_abren() -> tuple[dict, list[str]]:
     queda vieja en cuanto el cockpit añade o quita una cola, sin que nada falle.
     """
     fuera, fallos = {}, []
-    datos, err = _seguro(COCKPIT, "/aios/colas")
-    if err:
-        fallos.append(f"Zenvrax (colas): {err}")
-    else:
-        fuera["cockpit"] = list(datos.get("colas") or [])
-    # Xrise todavia no tiene esta puerta: sus colas se siguen viendo por el recuento. Se dice
-    # aqui para que el front no tenga que adivinarlo ni ofrecer abrir algo que no se abre.
-    fuera["xrise"] = []
+    for sistema, base, ruta, cab in (("cockpit", COCKPIT, "/aios/colas", None),
+                                     ("xrise", XRISE, "/dashboard/colas", {"X-Zeno-Org": ORG})):
+        datos, err = _seguro(base, ruta, cab)
+        if err:
+            fallos.append(f"{NEGOCIO[sistema]} (colas): {err}")
+            fuera[sistema] = []
+        else:
+            fuera[sistema] = list(datos.get("colas") or [])
     return fuera, fallos
 
 
@@ -390,16 +390,26 @@ def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str]:
     Las acciones pasan por el MISMO cruce con el catalogo que las del feed (`_acciones`): sin eso
     serian botones sin contrato, o sea texto muerto que el ejecutor rechazaria.
     """
-    datos, err = _seguro(COCKPIT, f"/aios/cola/{cola}?limite={int(limite)}")
+    cuales, _ = colas_que_se_abren()
+    sistema = "xrise" if cola in (cuales.get("xrise") or []) else "cockpit"
+    if sistema == "xrise":
+        datos, err = _seguro(XRISE, f"/dashboard/cola/{cola}?limite={int(limite)}",
+                             {"X-Zeno-Org": ORG})
+    else:
+        datos, err = _seguro(COCKPIT, f"/aios/cola/{cola}?limite={int(limite)}")
     if err:
         return [], err
+    # Un fallo parcial del otro lado (que no responda la base del organico, por ejemplo) viaja
+    # tal cual: una lista corta sin aviso se lee como "no hay nada pendiente".
+    for f in datos.get("fallos") or []:
+        err = f
     indice = _indice_del_catalogo()
     fuera = []
     for e in datos.get("elementos") or []:
-        acc = _acciones("cockpit", e.get("actions"), indice)
+        acc = _acciones(sistema, e.get("actions"), indice)
         fuera.append({
             "id": e.get("id"),
-            "negocio": NEGOCIO["cockpit"],
+            "negocio": NEGOCIO[sistema],
             "titulo": sin_adornos(e.get("titulo")) or "?",
             "cuerpo": (e.get("cuerpo") or "").strip(),
             "cuando": e.get("cuando"),
