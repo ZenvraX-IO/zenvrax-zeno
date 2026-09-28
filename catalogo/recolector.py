@@ -47,6 +47,8 @@ def _raiz_del_repo() -> pathlib.Path:
     for padre in _AQUI.parents:
         if (padre / "cockpit" / "api").is_dir():
             return padre
+        if (padre / "zenvrax-io" / "cockpit" / "api").is_dir():
+            return padre / "zenvrax-io"
     # No se encontro. Se devuelve el propio directorio y NO `parents[3]`: dentro del contenedor el
     # codigo vive en /app/catalogo, que solo tiene dos padres, y pedir el tercero lanzaba IndexError
     # AL IMPORTAR, o sea el servicio entero no arrancaba y el contenedor reiniciaba en bucle.

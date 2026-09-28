@@ -244,3 +244,14 @@ def test_sin_repos_el_catalogo_cae_al_congelado_y_no_a_una_lista_vacia(monkeypat
 # justamente quien lo pillo, con 23 tests en rojo a la vez.
 #
 # Lo que hay que mirar no es si la direccion es dinamica, sino si el boton se queda SIN contrato.
+
+
+def test_el_catalogo_encuentra_los_dos_repos_este_donde_este():
+    """Al graduar Zeno a su propio repo, `zenvrax-io` deja de estar ENCIMA y pasa a estar AL
+    LADO. Buscando solo hacia arriba no se encuentra nunca, y el catalogo se quedaria sin poder
+    recolectar sin decir por que: dentro del contenedor viaja congelado y todo pareceria bien
+    hasta que alguien añadiera una accion."""
+    from catalogo import recolector as r
+    fuente = (Path(r.__file__)).read_text(encoding="utf-8")
+    assert '"zenvrax-io" / "cockpit" / "api"' in fuente, (
+        "solo busca hacia arriba: al graduar, el repo del cockpit queda al lado")
