@@ -46,9 +46,9 @@ async def main():
             return 1
 
         print()
-        print("2) SE ABRE LA DE CLAIRE (GutLyn)")
+        print("2) SE ABRE LA DE DMs")
         # La de X, que es la de 44.
-        cual = pag.locator('[data-cola="claire"]')
+        cual = pag.locator('[data-cola="dms"]')
         if not await cual.count():
             cual = pag.locator("[data-cola]").first
         await cual.click()
@@ -60,6 +60,9 @@ async def main():
         print("   botones de marcar :", botones)
         print("   enlaces           :", await pag.locator('#cola-cuerpo a.b').count())
         print("   botones de copiar :", await pag.locator("#cola-cuerpo [data-copiar]").count())
+        print("   textos a la vista :", await pag.locator("#cola-cuerpo .para-pegar").count())
+        pasos = await pag.locator("#cola-cuerpo .neg").all_inner_texts()
+        print("   pasos distintos   :", sorted({p.replace("ZENVRAX", "").strip()[:28] for p in pasos})[:5])
         await pag.screenshot(path=str(FUERA / "colas-abierta.png"))
 
         print()
