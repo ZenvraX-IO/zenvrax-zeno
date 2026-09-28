@@ -1098,6 +1098,10 @@ async function cargaChat() {
   // volver era empezar de cero con alguien que se te olvida entre frase y frase.
   let h = null;
   try { h = await api("/api/hilo"); } catch { h = null; }
+  // SE VUELVE A MIRAR despues de la espera. Lo cazo el comprobador en produccion: mientras el
+  // servidor contestaba, el operador ya habia escrito, y el saludo aparecia DEBAJO de la
+  // respuesta como si Zeno acabara de empezar.
+  if ($("#burbujas").children.length) return;
   if (h && (h.turnos || []).length) {
     const sep = document.createElement("div");
     sep.className = "coste";
