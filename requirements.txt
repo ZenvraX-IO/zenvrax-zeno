@@ -5,3 +5,7 @@ uvicorn[standard]==0.34.0
 # suscribirse, y el cuerpo va cifrado de punta a punta, asi que el servicio de Google o Apple que
 # lo transporta no puede leerlo.
 pywebpush==2.0.0
+# Entrar con Face ID (WebAuthn). Es quien comprueba la firma que manda el telefono: sin esto se
+# podria montar un "Face ID" que solo desbloquea un token guardado, que es comodo y no demuestra
+# nada, porque quien copie el almacenamiento del navegador entra igual.
+webauthn==2.5.2

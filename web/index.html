@@ -435,13 +435,42 @@ const guarda = {
 let token = guarda.leer();
 let challenge = "";
 
+// CADA PETICION LLEVA TOPE DE ESPERA. Sin el, `fetch` espera para siempre: si el movil cambia de
+// wifi a datos, o si el servicio se reinicia (un despliegue corta lo que este en curso), la
+// peticion se queda muerta y la pantalla con el "pensando…" puesto, sin error y sin forma de
+// salir de ahi. Es lo que el operador vio: *"el chat se queda colgado varias veces"*. El servidor
+// contestaba 200 a todo; lo que faltaba era rendirse a tiempo en el navegador.
+//
+// Dos topes, porque no todo tarda igual: preguntarle algo a Zeno pasa por un modelo y puede tardar
+// medio minuto; leer una lista, no. Un tope unico obliga a elegir entre cortar lo lento o esperar
+// de mas en lo rapido.
+const ESPERA = 20000;
+const ESPERA_LARGA = 75000;
+const LENTAS = ["/api/chat", "/api/hoy", "/api/correo/redactar", "/api/pendientes",
+                "/api/negocios", "/api/personal", "/api/orden"];
+
 async function api(ruta, opciones = {}) {
-  const r = await fetch(ruta, {
-    ...opciones,
-    headers: { "Content-Type": "application/json",
-               ...(token ? { Authorization: "Bearer " + token } : {}),
-               ...(opciones.headers || {}) },
-  });
+  const tope = LENTAS.some(l => ruta.startsWith(l)) ? ESPERA_LARGA : ESPERA;
+  const corta = new AbortController();
+  const reloj = setTimeout(() => corta.abort(), tope);
+  let r;
+  try {
+    r = await fetch(ruta, {
+      ...opciones,
+      signal: corta.signal,
+      headers: { "Content-Type": "application/json",
+                 ...(token ? { Authorization: "Bearer " + token } : {}),
+                 ...(opciones.headers || {}) },
+    });
+  } catch (e) {
+    // Se distingue rendirse por tiempo de no haber red: son dos cosas distintas y llevan a hacer
+    // dos cosas distintas. "Failed to fetch" a secas no dice ninguna de las dos.
+    throw new Error(e.name === "AbortError"
+      ? "ha tardado demasiado y lo he dejado. Vuelve a intentarlo"
+      : "no he podido conectar: mira la cobertura");
+  } finally {
+    clearTimeout(reloj);
+  }
   if (r.status === 401) { salir(); throw new Error("sesión caducada"); }
   const datos = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(datos.detail || ("error " + r.status));

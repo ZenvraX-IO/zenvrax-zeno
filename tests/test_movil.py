@@ -90,3 +90,45 @@ def test_el_fragmento_que_responde_se_ve_entero():
         src = buscar.read_text(encoding="utf-8")
         assert "crudo" in src and 'fila["trozo"]' in src, (
             "la API tiene que mandar el fragmento y el porcentaje por separado")
+
+
+# --------------------------------------------------------------------------------------------
+# QUE NO SE QUEDE COLGADO.
+#
+# EL CASO (2026-09-28). El operador: *"el chat se queda colgado varias veces"*. En el servidor no
+# habia ni un 5xx ni una excepcion: contestaba 200 a todo. Lo que faltaba era rendirse a tiempo en
+# el NAVEGADOR. `fetch` sin AbortController espera para siempre, asi que si el movil cambia de red
+# o si el servicio se reinicia (un despliegue corta lo que este en curso), la peticion se queda
+# muerta y la pantalla con el "pensando…" puesto, sin error y sin forma de salir de ahi.
+# --------------------------------------------------------------------------------------------
+
+def test_ninguna_peticion_puede_esperar_para_siempre():
+    """EL FALLO QUE VIO EL OPERADOR. Un fetch sin tope no falla nunca: se queda."""
+    h = _html()
+    fn = h[h.index("async function api(ruta, opciones = {})"):]
+    fn = fn[:fn.index("\nconst $ =")]
+    assert "AbortController" in fn, "las peticiones no tienen tope de espera"
+    assert "corta.abort()" in fn and "signal: corta.signal" in fn, (
+        "se crea el abortador pero no se usa: el fetch sigue sin tope")
+    assert "clearTimeout" in fn, "el reloj se queda corriendo despues de contestar"
+
+
+def test_rendirse_por_tiempo_y_no_tener_red_se_dicen_distinto():
+    """Son dos cosas distintas y llevan a hacer dos cosas distintas. "Failed to fetch" a secas no
+    dice ninguna de las dos."""
+    h = _html()
+    assert "AbortError" in h
+    assert "ha tardado demasiado" in h and "mira la cobertura" in h
+
+
+def test_lo_que_pasa_por_un_modelo_espera_mas_que_lo_que_solo_lee():
+    """Un tope unico obliga a elegir entre cortar lo lento o esperar de mas en lo rapido. El chat
+    pasa por un modelo y puede tardar medio minuto; una lista, no."""
+    h = _html()
+    corto = int(re.search(r"const ESPERA = (\d+);", h).group(1))
+    largo = int(re.search(r"const ESPERA_LARGA = (\d+);", h).group(1))
+    assert largo > corto, "lo lento no espera mas que lo rapido"
+    # El del chat tiene que dar margen al timeout del servidor, que es de 60 s: si el navegador se
+    # rinde antes, corta una respuesta que iba a llegar.
+    assert largo >= 65000, "el navegador se rinde antes que el servidor y corta respuestas buenas"
+    assert '"/api/chat"' in h, "el chat no esta entre las que pueden tardar"

@@ -36,7 +36,7 @@ sys.path.insert(0, str(RAIZ))
 import lector                                    # noqa: E402
 from servicio import (avisos, chat as chat_mod, citas, clave as clave_mod,  # noqa: E402
                       correo, diario, ejecutor, empuje, google, ordenes, personal,
-                      ronda, sesion)
+                      ronda, rostro, sesion)
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -69,6 +69,12 @@ class Segundo(BaseModel):
     code: str
 
 
+class Rostro(BaseModel):
+    #: Lo que devuelve el navegador tal cual. No se toca aqui: lo comprueba la libreria.
+    respuesta: dict
+    apodo: str = ""
+
+
 class Clave(BaseModel):
     clave: str
 
@@ -88,6 +94,79 @@ async def entrar_con_clave(body: Clave):
         raise HTTPException(503, str(e)) from e
     except clave_mod.ClaveMala as e:
         raise HTTPException(401, str(e)) from e
+
+
+@app.get("/api/rostro")
+async def rostro_estado():
+    """Si hay Face ID dado de alta. SIN sesion: es lo que decide que enseña el login."""
+    return {"hay": rostro.hay(), "cuantos": rostro.cuantas()}
+
+
+@app.get("/api/rostro/entrar")
+async def rostro_entrar_reto():
+    """El reto para entrar. Sin sesion, por definicion: esto ES la puerta."""
+    try:
+        return rostro.entrada_empieza()
+    except rostro.NoVale as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@app.post("/api/rostro/entrar")
+async def rostro_entrar(body: Rostro):
+    """Entra con la cara. Comprueba la firma y, solo entonces, emite la sesion de siempre.
+
+    El token lo emite `clave`, no `rostro`: dos sitios que emiten sesiones son dos sitios que
+    caducan distinto, y del segundo nadie se acuerda al cambiar el primero.
+    """
+    try:
+        rostro.entrada_termina(body.respuesta)
+    except rostro.NoVale as e:
+        raise HTTPException(401, str(e)) from e
+    quien = sesion.USUARIOS[0] if sesion.USUARIOS else ""
+    return {"token": clave_mod.emite(quien), "email": quien}
+
+
+@app.get("/api/rostro/alta")
+async def rostro_alta_reto(authorization: str = Header(default="")):
+    """El reto para dar de alta este telefono. CON sesion: dar de alta una llave nueva exige haber
+    entrado ya, si no cualquiera podria añadir la suya."""
+    quien, _ = _quien(authorization)
+    return rostro.alta_empieza(getattr(quien, "email", "") or "")
+
+
+@app.post("/api/rostro/alta")
+async def rostro_alta(body: Rostro, authorization: str = Header(default="")):
+    _quien(authorization)
+    try:
+        return rostro.alta_termina(body.respuesta, body.apodo)
+    except rostro.NoVale as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/rostro/olvidar")
+async def rostro_olvidar(body: Rostro, authorization: str = Header(default="")):
+    """Da de baja un telefono, o todos. Existe desde el primer dia: una llave que se da de alta y
+    no de baja es una llave que no se puede cambiar, y si se pierde el movil esto es lo unico que
+    cierra la puerta."""
+    _quien(authorization)
+    return {"quedan": rostro.olvidar(str(body.respuesta.get("id") or ""))}
+
+
+@app.post("/api/rostro/pin")
+async def rostro_abre_pin(body: Rostro, authorization: str = Header(default="")):
+    """Abre con la cara la misma ventana que abre el PIN.
+
+    NO rebaja la barrera: el PIN son cuatro cifras que se escriben en la calle y se miran por
+    encima del hombro; esto es biometria comprobada por el chip del telefono. Lo que se exige es lo
+    mismo, demostrar otra vez que eres tu antes de lo que no se deshace.
+    """
+    _, token = _quien(authorization)
+    try:
+        rostro.entrada_termina(body.respuesta)
+    except rostro.NoVale as e:
+        raise HTTPException(401, str(e)) from e
+    hasta = clave_mod.abre_con_rostro(_huella(token))
+    return {"abierto": True, "segundos": int(hasta - time.time())}
 
 
 @app.get("/api/como_se_entra")

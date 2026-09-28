@@ -81,6 +81,12 @@ def test_la_lista_de_endpoints_que_escriben_es_cerrada():
         "avisos_quitar",     # borra una suscripcion
         "avisos_suscribir",  # guarda una suscripcion del navegador
         "chat",              # gasta API
+        "rostro_entrar",     # LA PUERTA con Face ID. Firma comprobada contra la clave
+                             # publica dada de alta, reto de un solo uso. Emite la sesion
+                             # de siempre, que la firma clave.py
+        "rostro_alta",       # da de alta un telefono. Exige haber entrado ya
+        "rostro_olvidar",    # lo da de baja. Sin esto, una llave no se podria cambiar
+        "rostro_abre_pin",   # abre con la cara la ventana de lo irreversible
         "api_orden",         # empareja una frase dicha con algo que ya esta en pantalla y
                              # deja el vale listo. NO ejecuta: confirmar sigue siendo
                              # accion_confirmar, con su diario. Y solo empareja lo

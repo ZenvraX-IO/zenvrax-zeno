@@ -223,6 +223,22 @@ def abre_con_pin(sesion: str, pin: str, ahora: float | None = None) -> float:
     return ahora + GRACIA
 
 
+def abre_con_rostro(sesion: str, ahora: float | None = None) -> float:
+    """Abre la misma ventana que el PIN, pero porque el telefono ha comprobado la cara.
+
+    NO es rebajar la barrera. El PIN son cuatro cifras que se pueden mirar por encima del hombro y
+    que el operador escribe en el movil, en la calle; Face ID es biometria comprobada por el chip
+    del telefono y firmada con una clave que no sale de el. Lo que se exige es lo mismo: demostrar
+    otra vez que eres tu, en el momento, antes de lo que no se deshace.
+
+    Quien llama tiene que haber verificado la firma ANTES. Esta funcion no comprueba nada: solo
+    abre la ventana, igual que `abre_con_pin` hace despues de acertar.
+    """
+    ahora = time.time() if ahora is None else ahora
+    _abierto[sesion] = ahora
+    return ahora + GRACIA
+
+
 def pin_abierto(sesion: str, ahora: float | None = None) -> bool:
     """Si esta sesion ya puso el PIN hace poco."""
     ahora = time.time() if ahora is None else ahora
