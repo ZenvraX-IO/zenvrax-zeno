@@ -258,14 +258,43 @@ def pendientes() -> tuple[list[Pendiente], list[dict], list[str]]:
     return fuera, [a for a in avisos if a["titulo"]], fallos
 
 
+#: Como viene el identificador de una tarea en el feed: "task:<uuid>". Se reconoce por el prefijo
+#: en vez de adivinar por el `kind`, porque el prefijo es lo que trae el dato.
+_TAREA = "task:"
+
+
 def _aviso_suelto(sistema: str, n: dict) -> dict:
-    """Un aviso que no trae boton: se enseña, pero no se decide desde aqui."""
-    return {
+    """Un aviso que no trae boton del sistema.
+
+    Lleva su CUERPO: el feed ya lo manda y Zeno lo tiraba, asi que para saber de que iba una cosa
+    habia que abrir el cockpit. Enseñarlo aqui quita la mitad de los saltos entre aplicaciones.
+
+    Y si es una TAREA, lleva ademas la accion de cerrarla. Es lo unico que Zeno puede cambiar en el
+    cockpit, y se arma aqui porque aqui es donde se sabe que lo es.
+    """
+    ident = str(n.get("id") or "")
+    aviso = {
         "negocio": NEGOCIO[sistema],
         "titulo": sin_adornos(n.get("title") or n.get("label") or ""),
+        "cuerpo": sin_adornos(n.get("body") or "")[:600],
         "grave": (n.get("severity") or n.get("tone")) in ("bad", "urgent", "error"),
         "url": enlaza(sistema, n.get("url") or n.get("link") or ""),
+        "acciones": [],
     }
+    if sistema == "cockpit" and ident.startswith(_TAREA):
+        aviso["acciones"] = [{
+            "etiqueta": "Marcar hecha",
+            "op": "cockpit.tarea_hecha",
+            # Cambia un estado y se deshace volviendo a abrirla: no sale al mundo, asi que no pide
+            # PIN. El PIN es para lo que no se puede recoger.
+            "efecto": "cambia_estado",
+            "coste_api": False,
+            "url": f"{COCKPIT.rstrip('/')}/ops/tasks/{ident[len(_TAREA):]}",
+            "metodo": "PATCH",
+            "cuerpo": {"status": "done"},
+            "se_puede_abrir": False,
+        }]
+    return aviso
 
 
 def estado() -> tuple[dict, list[str]]:

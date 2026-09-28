@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 import secrets
 import time
+import json
 import urllib.error
 import urllib.request
 
@@ -41,7 +42,16 @@ ABRE = "abre"
 #: otro sistema es un dato de fuera.
 CASAS = tuple(x.strip() for x in os.environ.get(
     "ZENO_CASAS",
-    "https://n8n.zenvrax.com/,https://cockpit.zenvrax.com/,https://xrise.zenvrax.com/"
+    "https://n8n.zenvrax.com/,https://cockpit.zenvrax.com/,https://xrise.zenvrax.com/,"
+    "http://cockpit-api:8802/,http://ecomops-api:8803/"
+).split(",") if x.strip())
+
+#: LA CLAVE DE ESCRITURA, y a QUIEN se le manda. Solo viaja a las direcciones de la API de casa:
+#: mandarla en cada peticion la entregaria tambien a n8n, que es otro sistema y no la necesita.
+#: Una credencial se manda a quien tiene que recibirla, no a todo el que aparezca en una url.
+CLAVE_ESCRITURA = os.environ.get("ZENO_WRITE_KEY", "")
+CON_CLAVE = tuple(x.strip() for x in os.environ.get(
+    "ZENO_CON_CLAVE", "http://cockpit-api:8802/,https://cockpit.zenvrax.com/api/"
 ).split(",") if x.strip())
 
 _VALES: dict[str, dict] = {}
@@ -60,8 +70,13 @@ def _de_casa(url: str) -> bool:
     return bool(url) and url.startswith(CASAS)
 
 
+#: Los verbos que se admiten. GET para los webhooks de las colas (asi estan hechos) y PATCH para
+#: cambiar un estado. DELETE no esta: borrar no se pidio y no se abre "por si acaso".
+METODOS = ("GET", "PATCH", "POST")
+
+
 def propone(op: str, etiqueta: str, url: str, efecto: str, coste_api: bool = False,
-            titulo: str = "") -> dict:
+            titulo: str = "", metodo: str = "GET", cuerpo: dict | None = None) -> dict:
     """Prepara una ejecucion y devuelve un vale. NO llama a nadie."""
     if not op or not efecto:
         # Sin contrato no se ejecuta. El recolector del catalogo ya se niega a inventarlo, y aqui
@@ -73,6 +88,9 @@ def propone(op: str, etiqueta: str, url: str, efecto: str, coste_api: bool = Fal
         raise NoSePuede(f"efecto desconocido: {efecto}")
     if not _de_casa(url):
         raise NoSePuede("esa direccion no es de ninguno de los sistemas de casa")
+    metodo = (metodo or "GET").upper()
+    if metodo not in METODOS:
+        raise NoSePuede(f"metodo no permitido: {metodo}")
 
     ahora = time.time()
     for v, d in list(_VALES.items()):
@@ -80,7 +98,8 @@ def propone(op: str, etiqueta: str, url: str, efecto: str, coste_api: bool = Fal
             _VALES.pop(v, None)
     vale = secrets.token_urlsafe(18)
     _VALES[vale] = {"nacida": ahora, "op": op, "url": url, "efecto": efecto,
-                    "etiqueta": etiqueta, "coste_api": coste_api, "titulo": titulo}
+                    "etiqueta": etiqueta, "coste_api": coste_api, "titulo": titulo,
+                    "metodo": metodo, "cuerpo": cuerpo}
     return {
         "vale": vale, "op": op, "etiqueta": etiqueta, "titulo": titulo,
         "efecto": efecto,
@@ -105,10 +124,20 @@ def confirma(vale: str, pin_abierto: bool) -> dict:
     _VALES.pop(vale, None)          # se quema aqui: a partir de este punto ya no se puede repetir
     apunte = {"op": d["op"], "etiqueta": d["etiqueta"], "titulo": d["titulo"],
               "efecto": d["efecto"], "publica": d["efecto"] == PUBLICA}
-    req = urllib.request.Request(d["url"], method="GET", headers={
+    cabeceras = {
         # Que se sepa desde donde se disparo. Si un post sale raro, el primer dato util es si lo
         # aprobo el cockpit, Xrise o Zeno.
-        "User-Agent": "Zeno/1.0 (asistente del operador)"})
+        "User-Agent": "Zeno/1.0 (asistente del operador)"}
+    datos = None
+    if d.get("cuerpo") is not None:
+        datos = json.dumps(d["cuerpo"]).encode()
+        cabeceras["Content-Type"] = "application/json"
+    # La clave SOLO a quien tiene que recibirla. Mandarla en cada peticion la entregaria tambien a
+    # n8n, que es otro sistema: una credencial no viaja a todo el que aparezca en una url.
+    if CLAVE_ESCRITURA and d["url"].startswith(CON_CLAVE):
+        cabeceras["X-Zeno-Key"] = CLAVE_ESCRITURA
+    req = urllib.request.Request(d["url"], data=datos, method=d.get("metodo", "GET"),
+                                 headers=cabeceras)
     try:
         with urllib.request.urlopen(req, timeout=45) as r:
             cuerpo = (r.read() or b"")[:400].decode("utf-8", "replace")

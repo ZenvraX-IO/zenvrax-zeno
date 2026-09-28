@@ -566,22 +566,37 @@ async function cargaPendientes() {
     }
     // Los avisos que NO traen boton: no se deciden desde aqui, pero existen. Van al final y
     // enlazan al sistema, para que Zeno no enseñe menos de lo que sabe.
+    // Los avisos que NO traen boton del sistema: ahora con su CUERPO, para saber de que van sin
+    // abrir el cockpit, y con el boton de cerrar si son tareas.
     const sueltos = d.avisos || [];
+    avisosEnPantalla = sueltos;
     if (sueltos.length) {
       html += '<div class="apartado">También avisan<span style="flex:1"></span>' +
               '<span style="color:var(--apagado)">' + sueltos.length + "</span></div>";
-      for (const a of sueltos)
-        html += (a.url ? '<a class="ficha" href="' + esc(a.url) + '" target="_blank" ' +
-                         'rel="noopener" style="text-decoration:none;color:inherit">'
-                       : '<div class="ficha">') +
-                '<span style="width:3px;height:14px;border-radius:2px;flex:0 0 auto;' +
-                'background:' + (a.grave ? "var(--rojo)" : "var(--linea-fuerte)") + '"></span>' +
-                "<span>" + esc(a.titulo) + "</span>" +
-                '<span style="flex:1"></span><span style="color:var(--tenue);font-size:11px">' +
-                esc(a.negocio) + "</span>" + (a.url ? "</a>" : "</div>");
+      for (let i = 0; i < sueltos.length; i++) {
+        const a = sueltos[i];
+        html += '<div class="tarjeta"><div class="neg ' +
+                (a.negocio === "GutLyn" ? "gutlyn" : "") + '">' + esc(a.negocio) +
+                (a.grave ? ' <span class="marca-accion m-mundo">urgente</span>' : "") + "</div>" +
+                '<div class="post">' + esc(a.titulo) + "</div>" +
+                (a.cuerpo ? '<div class="extracto">' + esc(a.cuerpo) + "</div>" : "") +
+                '<div class="btns">' +
+                (a.url ? '<a class="b" href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
+                         "Abrirlo</a>" : "");
+        (a.acciones || []).forEach((_, j) => {
+          html += '<button class="b" data-aviso="' + i + "-" + j + '">' +
+                  esc(a.acciones[j].etiqueta) + "</button>";
+        });
+        html += "</div></div>";
+      }
     }
     c.innerHTML = html + '<div id="confirmar-accion"></div><div id="lo-hecho"></div>';
     pintaHecho();
+    c.querySelectorAll("[data-aviso]").forEach(b => b.onclick = () => {
+      const [i, j] = b.dataset.aviso.split("-").map(Number);
+      const a = avisosEnPantalla[i];
+      proponeAccion({ titulo: a.titulo }, a.acciones[j]);
+    });
     c.querySelectorAll("[data-hacer]").forEach(b => b.onclick = () => {
       const [i, j] = b.dataset.hacer.split("-").map(Number);
       proponeAccion(pendientesEnPantalla[i], pendientesEnPantalla[i].acciones[j]);
@@ -596,6 +611,7 @@ async function cargaPendientes() {
 // letras lo que va a pasar, y lo que sale al mundo pide ademas el PIN.
 
 let pendientesEnPantalla = [];
+let avisosEnPantalla = [];
 let accionViva = null;
 
 async function proponeAccion(pendiente, accion) {
@@ -603,7 +619,8 @@ async function proponeAccion(pendiente, accion) {
   try {
     const pr = await api("/api/accion/proponer", { method: "POST", body: JSON.stringify({
       op: accion.op, etiqueta: accion.etiqueta, url: accion.url, efecto: accion.efecto,
-      coste_api: !!accion.coste_api, titulo: pendiente.titulo }) });
+      coste_api: !!accion.coste_api, titulo: pendiente.titulo,
+      metodo: accion.metodo || "GET", cuerpo: accion.cuerpo || null }) });
     accionViva = pr;
     let h = '<div class="propuesta"><div class="q">' + esc(pr.etiqueta) + "</div>" +
             '<div class="c">' + esc(pr.titulo || "") + "</div>";

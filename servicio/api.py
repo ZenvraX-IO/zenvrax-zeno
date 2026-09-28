@@ -318,6 +318,10 @@ class AccionPropuesta(BaseModel):
     efecto: str
     coste_api: bool = False
     titulo: str = ""
+    #: Para lo que no es un webhook. Por defecto GET, que es como estan hechas las 33 acciones del
+    #: catalogo: cambiar el valor por defecto las habria roto todas de golpe.
+    metodo: str = "GET"
+    cuerpo: dict | None = None
 
 
 class Pin(BaseModel):
@@ -368,7 +372,7 @@ async def accion_proponer(body: AccionPropuesta, authorization: str = Header(def
     _quien(authorization)
     try:
         return ejecutor.propone(body.op, body.etiqueta, body.url, body.efecto,
-                                body.coste_api, body.titulo)
+                                body.coste_api, body.titulo, body.metodo, body.cuerpo)
     except ejecutor.NoSePuede as e:
         raise HTTPException(422, str(e)) from e
 

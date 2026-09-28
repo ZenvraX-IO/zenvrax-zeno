@@ -27,6 +27,9 @@ services:
       ZENO_COCKPIT_WEB: ${ZENO_COCKPIT_WEB:-https://cockpit.zenvrax.com}
       ZENO_XRISE_WEB: ${ZENO_XRISE_WEB:-https://xrise.zenvrax.com}
       ZENO_READ_KEY: ${ZENO_READ_KEY}
+      # La de ESCRITURA va aparte de la de lectura: con una sola, revocar la escritura dejaria a
+      # Zeno ciego, y quien robara la de leer podria ademas cerrar tareas. Vacia = Zeno no escribe.
+      ZENO_WRITE_KEY: ${ZENO_WRITE_KEY:-}
       ZENO_ORG: ${ZENO_ORGS:-gutlyn}
       # Quien puede entrar. Vacio = cualquiera con sesion valida del cockpit; en produccion, el
       # correo del operador, porque Zeno tiene UN usuario (decision del 2026-09-27).

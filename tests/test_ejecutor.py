@@ -21,6 +21,7 @@ Las siete formas de que esto acabe publicando algo que nadie aprobó:
 
 Puros: sin red. La llamada se sustituye.
 """
+import json
 import sys
 from pathlib import Path
 
@@ -263,10 +264,80 @@ def test_el_diario_aguanta_una_linea_rota(monkeypatch, tmp_path):
     assert ops == ["dos", "uno"], ops
 
 
-def test_el_diario_no_guarda_el_cuerpo_de_lo_publicado():
+def test_el_diario_no_guarda_el_cuerpo_de_lo_publicado(monkeypatch):
     """Zeno no es el sitio donde vive el contenido. Una copia seria la tercera verdad que esta
-    arquitectura evita a proposito: se guarda QUE accion, sobre QUE, cuando y como acabo."""
-    fuente = (RAIZ / "servicio" / "ejecutor.py").read_text(encoding="utf-8")
-    trozo = fuente[fuente.index("apunte = {"):fuente.index("req = urllib.request.Request")]
-    for prohibido in ("cuerpo", "body", "contenido", "texto"):
-        assert prohibido not in trozo, f"el diario guarda {prohibido}"
+    arquitectura evita a proposito: se guarda QUE accion, sobre QUE, cuando y como acabo.
+
+    Se comprueba sobre lo que SE APUNTA de verdad, no leyendo un trozo del fichero. La primera
+    version buscaba la palabra "cuerpo" entre dos marcas del codigo y salto sola en cuanto el
+    ejecutor aprendio a mandar un cuerpo en la peticion, que no tiene nada que ver.
+    """
+    apuntes = []
+    monkeypatch.setattr(ejecutor.diario, "apunta", apuntes.append)
+    _sale_bien(monkeypatch, [])
+    v = ejecutor.propone("cockpit.tarea_hecha", "Marcar hecha", REGENERAR,
+                         ejecutor.CAMBIA_ESTADO, titulo="Una tarea",
+                         metodo="PATCH", cuerpo={"status": "done", "secreto": "no deberia salir"})
+    ejecutor.confirma(v["vale"], pin_abierto=False)
+    assert set(apuntes[0]) == {"op", "etiqueta", "titulo", "efecto", "publica",
+                               "resultado", "codigo"}
+    assert "secreto" not in json.dumps(apuntes[0])
+
+
+# ---------------------------------------------------------------- escribir en el cockpit
+
+def test_la_clave_de_escritura_solo_viaja_al_cockpit(monkeypatch):
+    """EL TEST QUE IMPORTA de esta parte. Zeno llama a dos sitios muy distintos: los webhooks de
+    n8n, que publican, y la API del cockpit, que ahora acepta su clave de escritura.
+
+    Mandar la clave en cada peticion la entregaria tambien a n8n, que es otro sistema y no la
+    necesita. Una credencial se manda a quien tiene que recibirla, no a todo el que aparezca en
+    una url.
+    """
+    monkeypatch.setattr(ejecutor, "CLAVE_ESCRITURA", "LA-CLAVE")
+    vistas = []
+
+    class R:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b"{}"
+
+    monkeypatch.setattr(ejecutor.urllib.request, "urlopen",
+                        lambda req, timeout=0: vistas.append(dict(req.headers)) or R())
+
+    v = ejecutor.propone("claire.aprobar", "Aprobar", APROBAR, ejecutor.PUBLICA)["vale"]
+    ejecutor.confirma(v, pin_abierto=True)
+    assert not any("zeno-key" in k.lower() for k in vistas[0]), "la clave ha viajado a n8n"
+
+    v = ejecutor.propone("cockpit.tarea_hecha", "Marcar hecha",
+                         "http://cockpit-api:8802/ops/tasks/abc", ejecutor.CAMBIA_ESTADO,
+                         metodo="PATCH", cuerpo={"status": "done"})["vale"]
+    ejecutor.confirma(v, pin_abierto=False)
+    assert any("zeno-key" in k.lower() for k in vistas[1]), "al cockpit si tiene que ir"
+
+
+def test_solo_se_admiten_los_verbos_previstos(monkeypatch):
+    """DELETE no esta: borrar no se pidio, y un verbo no se abre "por si acaso"."""
+    _nada_sale(monkeypatch)
+    for malo in ("DELETE", "PUT", "get; DROP", ""):
+        if malo == "":
+            continue
+        with pytest.raises(ejecutor.NoSePuede):
+            ejecutor.propone("x", "X", REGENERAR, ejecutor.CAMBIA_ESTADO, metodo=malo)
+
+
+def test_sin_metodo_sigue_siendo_GET(monkeypatch):
+    """Las acciones de las colas no dicen metodo: son webhooks y se llaman con GET. Cambiar el
+    valor por defecto habria roto las 33 del catalogo de golpe."""
+    vistas = []
+    class R:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b"ok"
+    monkeypatch.setattr(ejecutor.urllib.request, "urlopen",
+                        lambda req, timeout=0: vistas.append((req.method, req.data)) or R())
+    v = ejecutor.propone("a", "Aprobar", APROBAR, ejecutor.PUBLICA)["vale"]
+    ejecutor.confirma(v, pin_abierto=True)
+    assert vistas[0] == ("GET", None), "un GET no puede llevar cuerpo"
