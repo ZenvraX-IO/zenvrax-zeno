@@ -661,12 +661,20 @@ async function abreCola(cola, titulo) {
            "</div><div class=\"post\">" + esc(e.titulo) + "</div>" +
            (e.cuerpo ? '<div class="extracto">' + esc(e.cuerpo) + "</div>" : "") +
            '<div class="btns">';
+      let pintados = 0;
       (e.acciones || []).forEach((a, j) => {
-        h += a.se_puede_abrir
-          ? '<a class="b" href="' + esc(a.url) + '" target="_blank" rel="noopener">' + esc(a.etiqueta) + "</a>"
-          : '<button class="b' + (a.efecto === "publica" ? " primaria" : "") +
-            '" data-cola-accion="' + i + "-" + j + '">' + esc(a.etiqueta) + "</button>";
+        if (a.se_puede_abrir) {
+          h += '<a class="b" href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
+               esc(a.etiqueta) + "</a>";
+          pintados++;
+        } else if (a.url && /^https?:/.test(a.url)) {
+          h += '<button class="b' + (a.efecto === "publica" ? " primaria" : "") +
+               '" data-cola-accion="' + i + "-" + j + '">' + esc(a.etiqueta) + "</button>";
+          pintados++;
+        }
       });
+      if (!pintados)
+        h += '<span class="extracto">Esto se hace en el cockpit</span>';
       h += "</div></div>";
     });
     $("#cola-cuerpo").innerHTML = h + '<div class="confirmar-aqui"></div>';

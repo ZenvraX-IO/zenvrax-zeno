@@ -180,12 +180,19 @@ def _acciones(sistema: str, brutas: list, indice: dict) -> list:
         # del codigo tal cual. Limpiarla antes rompe la busqueda y la accion se queda sin contrato,
         # o sea sin poder ejecutarse. Se limpia DESPUES, solo para enseñarla.
         ficha = indice.get((sistema, etiqueta))
+        efecto = ficha.efecto if ficha else None
+        # Lo que solo ABRE una pantalla lleva ruta relativa del cockpit ("/marketing/x?open=...").
+        # Sin prefijar, el navegador la resuelve contra zeno.zenvrax.com y da un 404: el boton
+        # existe, se pulsa y no lleva a ningun sitio. Ya paso con el foco del dia.
+        url = a.get("url") or ""
+        if efecto == C.ABRE:
+            url = enlaza(sistema, url)
         fuera.append(Accion(
             etiqueta=sin_adornos(etiqueta) or etiqueta,
             op=ficha.op if ficha else None,
-            efecto=ficha.efecto if ficha else None,
+            efecto=efecto,
             coste_api=bool(ficha and ficha.coste_api),
-            url=a.get("url") or "",
+            url=url,
             reversible=bool(ficha and getattr(ficha, "reversible", False)),
         ))
     return fuera

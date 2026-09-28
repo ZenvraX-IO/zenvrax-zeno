@@ -434,3 +434,23 @@ def test_el_foco_tampoco_se_repite_en_el_resto_del_plan(monkeypatch):
          "counts": {}}, None))
     plan, _ = lector.plan_del_dia()
     assert [r["titulo"] for r in plan["resto"]] == ["Otro DM"]
+
+
+def test_lo_que_solo_abre_lleva_direccion_absoluta():
+    """EL FALLO. Las acciones que abren una pantalla del cockpit traen ruta relativa
+    ("/marketing/x?open=..."). Sin prefijar, el navegador la resuelve contra zeno.zenvrax.com y
+    da un 404: el boton existe, se pulsa y no lleva a ningun sitio. Ya paso con el foco del dia
+    y volvio a pasar al abrir las colas enteras."""
+    indice = lector._indice_del_catalogo()
+    brutas = [{"label": "🔍 Revisar / copiar", "url": "/marketing/x?open=abc"}]
+    acc = lector._acciones("cockpit", brutas, indice)
+    assert acc and acc[0].url.startswith("https://"), acc[0].url
+    assert acc[0].se_puede_abrir, "no se puede abrir lo que deberia abrirse"
+
+
+def test_lo_que_ya_es_absoluto_no_se_toca():
+    """Los webhooks de n8n traen su dominio. Prefijarlos los romperia."""
+    indice = lector._indice_del_catalogo()
+    brutas = [{"label": "✅ Aprobar", "url": "https://n8n.zenvrax.com/webhook/linkedin-approve?id=1"}]
+    acc = lector._acciones("cockpit", brutas, indice)
+    assert acc[0].url == "https://n8n.zenvrax.com/webhook/linkedin-approve?id=1"

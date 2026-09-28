@@ -65,9 +65,11 @@ async def main():
         if botones:
             await pag.locator("#cola-cuerpo [data-cola-accion]").first.click()
             await pag.wait_for_timeout(2500)
-            txt = await pag.locator("#confirmar-accion").inner_text()
+            txt = await pag.locator("#cola-cuerpo .confirmar-aqui").inner_text()
             print("   dice:", " / ".join(txt.split("\n"))[:200] or "(nada)")
             await pag.screenshot(path=str(FUERA / "colas-confirmar.png"))
+            visible = await pag.locator("#cola-cuerpo .propuesta").is_visible()
+            print("   y se VE dentro de la capa:", visible)
 
         await nav.close()
         print()
