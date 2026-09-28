@@ -28,9 +28,11 @@ def _html() -> str:
 def test_se_puede_dictar_en_los_dos_campos():
     """Lo pedido fue "en la busqueda Y en preguntar". Con uno solo, el otro sigue siendo teclear."""
     h = _html()
-    for boton, campo in (("mic-q", "#q"), ("mic-pregunta", "#pregunta")):
-        assert f'id="{boton}"' in h, f"no hay boton de dictado para {campo}"
-        assert f'enchufaVoz("#{boton}", "{campo}"' in h, f"el boton {boton} no esta enganchado a {campo}"
+    for boton in ("mic-q", "mic-pregunta"):
+        assert f'id="{boton}"' in h, f"no hay boton de dictado {boton}"
+    # Buscar dicta al campo; el del chat abre una conversacion entera, que es otra cosa.
+    assert 'enchufaVoz("#mic-q", "#q"' in h, "el boton de buscar no esta enganchado al campo"
+    assert '$("#mic-pregunta").onclick = conversa' in h, "el boton del chat no abre la conversacion"
 
 
 def test_la_voz_no_sale_a_ningun_tercero():
@@ -45,18 +47,69 @@ def test_la_voz_no_sale_a_ningun_tercero():
         assert prohibido not in h, f"la voz acaba en {prohibido}: eso graba y manda audio fuera"
 
 
-def test_dictar_en_el_chat_no_manda_la_pregunta():
-    """Cada pregunta cuesta dinero y una transcripcion puede salir torcida. Lo ultimo que quieres
-    es pagar por una frase que no dijiste."""
+def test_lo_dicho_va_primero_a_la_puerta_que_no_cuesta():
+    """CAMBIO DE DECISION, 28-sep. Por la mañana el dictado del chat dejaba la frase escrita y no
+    la mandaba, porque cada pregunta cuesta. Por la tarde el operador pidio conversacion por voz,
+    y una conversacion que no contesta no es una conversacion.
+
+    La proteccion del gasto no se quita, se mueve: lo dicho va PRIMERO a /api/orden, que empareja
+    con reglas y cuesta cero. Solo si no era una orden se manda al chat, que si gasta. Cerrar una
+    tarea hablando sale gratis.
+    """
     h = _html()
-    m = re.search(r'enchufaVoz\("#mic-pregunta",\s*"#pregunta",\s*"[^"]+",\s*([^)]*)\)', h)
-    assert m, "no se encuentra el enganche del chat"
-    assert m.group(1).strip() == "null", (
-        "el dictado del chat lleva una accion al terminar: si esa accion pregunta, gasta sola")
-    # En buscar SI se lanza la busqueda: buscar no cuesta nada. Se busca en la LINEA entera y no
-    # con [^)]*: la propia llamada lleva parentesis dentro y el corte se quedaba a medias.
+    conversa = h[h.index("async function conversa()"):]
+    conversa = conversa[:conversa.index("if (Voz.hay)")]
+    assert conversa.index("/api/orden") < conversa.index("preguntar("), (
+        "se pregunta (y se paga) antes de mirar si era una orden")
+    # En buscar SI se lanza la busqueda: buscar no cuesta nada.
     linea = [x for x in h.splitlines() if 'enchufaVoz("#mic-q"' in x]
     assert linea and "busca()" in linea[0], "dictar en buscar no lanza la busqueda"
+
+
+def test_quien_decide_que_es_un_si_es_el_servidor():
+    """La regla de que cuenta como un si vive en `ordenes.py`, con sus tests. Repetirla en
+    JavaScript serian dos reglas que se separan a la primera, y la copia del navegador es la que
+    decide si se ejecuta."""
+    h = _html()
+    conversa = h[h.index("async function conversa()"):]
+    conversa = conversa[:conversa.index("if (Voz.hay)")]
+    assert 'vale: o.vale' in conversa, "la respuesta no se manda al servidor a interpretar"
+    assert 'q.estado === "si"' in conversa
+    for suelto in ('=== "si "', '.includes("si")', 'toLowerCase() === "si"'):
+        assert suelto not in h, f"el navegador interpreta el si por su cuenta: {suelto}"
+
+
+def test_ejecutar_sigue_pasando_por_la_unica_puerta():
+    """La voz no abre un camino nuevo para ejecutar: usa /api/accion/confirmar, el mismo vale de
+    un solo uso y el mismo diario. Si la voz tuviera su propia salida, habria dos sitios por los
+    que sale algo al mundo y solo uno estaria vigilado."""
+    h = _html()
+    conversa = h[h.index("async function conversa()"):]
+    conversa = conversa[:conversa.index("if (Voz.hay)")]
+    assert "/api/accion/confirmar" in conversa
+
+
+def test_zeno_solo_habla_si_le_has_hablado():
+    """Lo eligio el operador: si escribes, contesta escrito. Hablar solo porque si es lo que hace
+    que uno lo cierre en la primera reunion."""
+    h = _html()
+    # `preguntar` es lo que usa el chat escrito, y no puede decir nada en alto por su cuenta.
+    escrito = h[h.index("async function preguntar(desde)"):]
+    escrito = escrito[:escrito.index("function cargaChat()")]
+    assert "Habla.di" not in escrito, "el chat escrito contesta en voz alta"
+    # Y la conversacion, que empieza por voz, si.
+    conversa = h[h.index("async function conversa()"):]
+    assert "Habla.di" in conversa
+
+
+def test_hablar_no_puede_colgar_la_conversacion():
+    """`onend` no siempre llega (iOS al bloquear la pantalla, textos largos). Sin red de
+    seguridad, la conversacion se queda esperando para siempre a algo que ya termino."""
+    h = _html()
+    di = h[h.index("    di(texto) {"):]
+    di = di[:di.index("  };")]
+    assert "setTimeout(fin" in di, "si onend no llega, la conversacion se queda colgada"
+    assert "u.onerror" in di
 
 
 def test_se_ve_que_el_microfono_esta_abierto():

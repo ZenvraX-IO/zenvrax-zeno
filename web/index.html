@@ -785,11 +785,14 @@ function burbuja(clase, texto) {
   return d;
 }
 
-async function preguntar() {
+// Devuelve lo que contesto Zeno, para que la conversacion por voz pueda decirlo en alto. Con
+// `desde` se le pasa una frase ya dictada en vez de leerla del campo.
+async function preguntar(desde) {
   const caja = $("#pregunta");
-  const texto = caja.value.trim();
-  if (texto.length < 2) return;
-  caja.value = "";
+  const texto = (desde !== undefined ? desde : caja.value).trim();
+  if (texto.length < 2) return "";
+  let dicho = "";
+  if (desde === undefined) caja.value = "";
   // Lo hablado antes viaja con la pregunta. Se lee de la PANTALLA, que es donde esta la
   // conversacion: guardarla en el servidor seria estado nuevo, y al cerrar la aplicacion la
   // conversacion se acaba de todas formas.
@@ -802,6 +805,7 @@ async function preguntar() {
     const r = await api("/api/chat", { method: "POST",
                                        body: JSON.stringify({ texto, turnos }) });
     esperando.textContent = r.respuesta || "(sin respuesta)";
+    dicho = r.respuesta || "";
     // El coste va DEBAJO de cada respuesta, no escondido en un ajuste: es la unica pieza de Zeno
     // cuyo gasto lo decide el uso, y verlo es lo que evita la sorpresa a fin de mes.
     const c = document.createElement("div");
@@ -812,7 +816,9 @@ async function preguntar() {
     c.scrollIntoView({ block: "end" });
   } catch (e) {
     esperando.textContent = e.message;
+    dicho = e.message;
   }
+  return dicho;
 }
 
 function cargaChat() {
@@ -1688,9 +1694,121 @@ function enchufaVoz(idBoton, idCampo, idDice, alTerminar) {
 }
 
 enchufaVoz("#mic-q", "#q", "#dice-q", () => { $("#limpiar").hidden = false; busca(); });
-// En el chat el dictado deja la pregunta escrita y NO la manda. Cada pregunta cuesta dinero y una
-// transcripcion puede salir torcida: lo ultimo que quieres es pagar por una frase que no dijiste.
-enchufaVoz("#mic-pregunta", "#pregunta", "#dice-pregunta", null);
+
+// ------------------------------------------------------------------ Zeno contesta hablando
+//
+// Solo si le has hablado: si escribes, contesta escrito. La conversacion mantiene el canal por el
+// que empezo, que es lo que uno espera y lo que evita que se ponga a hablar en una reunion.
+//
+// Tambien del navegador, como el escuchar: ni coste ni clave ni audio saliendo a ningun sitio.
+const Habla = (() => {
+  const S = window.speechSynthesis;
+  return {
+    hay: !!S,
+    calla() { try { S && S.cancel(); } catch {} },
+    di(texto) {
+      return new Promise((listo) => {
+        if (!S || !texto) { listo(); return; }
+        let acabado = false;
+        const fin = () => { if (!acabado) { acabado = true; listo(); } };
+        try {
+          S.cancel();
+          const u = new SpeechSynthesisUtterance(texto);
+          u.lang = "es-ES";
+          u.rate = 1.05;
+          u.onend = fin;
+          u.onerror = fin;
+          S.speak(u);
+          // RED DE SEGURIDAD. `onend` no siempre llega (pasa en iOS al bloquear la pantalla y en
+          // textos largos), y sin esto la conversacion se queda esperando para siempre a algo que
+          // ya termino. Se calcula por el largo del texto, con un minimo y un tope.
+          setTimeout(fin, Math.min(30000, 2500 + texto.length * 90));
+        } catch (e) { fin(); }
+      });
+    },
+  };
+})();
+
+// ------------------------------------------------------------------ conversacion de voz
+//
+// Pulsas una vez y se habla: escucha, contesta en alto y vuelve a escuchar hasta que pulsas otra
+// vez. Es lo que hace que sirva andando o conduciendo, que es cuando no se puede teclear.
+//
+// EL ORDEN IMPORTA Y NO ES CASUAL. Lo dicho va PRIMERO a /api/orden, que empareja con reglas y no
+// cuesta nada. Solo si no era una orden se manda al chat, que si gasta. Asi cerrar una tarea
+// hablando sale gratis y el tope diario de preguntas se queda para preguntar.
+let conversando = false;
+
+function oye(dice) {
+  return new Promise((listo) => {
+    Voz.arranca((t) => { dice.textContent = t || "escuchando…"; },
+                (texto, fallo) => listo({ texto, fallo }));
+  });
+}
+
+async function conversa() {
+  const b = $("#mic-pregunta"), dice = $("#dice-pregunta");
+  if (conversando) { conversando = false; Voz.para(); Habla.calla(); return; }
+  conversando = true;
+  try {
+    while (conversando) {
+      b.classList.add("oyendo");
+      const oido = await oye(dice);
+      b.classList.remove("oyendo");
+      dice.textContent = "";
+      if (!conversando) break;
+      if (oido.fallo) { dice.textContent = oido.fallo; await Habla.di(oido.fallo); break; }
+      if (!oido.texto) break;                  // silencio: se acaba la conversacion, no se insiste
+      burbuja("tu", oido.texto);
+
+      const o = await api("/api/orden", { method: "POST",
+                                          body: JSON.stringify({ frase: oido.texto }) });
+      if (o.estado === "vale") {
+        burbuja("el", o.decir);
+        await Habla.di(o.decir);
+        if (!conversando) break;
+        b.classList.add("oyendo");
+        const r = await oye(dice);
+        b.classList.remove("oyendo");
+        dice.textContent = "";
+        burbuja("tu", r.texto || "(no he oído nada)");
+        // Quien decide si eso fue un si es el SERVIDOR, que es donde estan la regla y sus tests.
+        // Repetirla aqui en JavaScript seria tener dos reglas que se separan a la primera.
+        const q = await api("/api/orden", { method: "POST",
+                                            body: JSON.stringify({ frase: r.texto || "",
+                                                                   vale: o.vale }) });
+        if (q.estado === "si") {
+          try {
+            const hecho = await api("/api/accion/confirmar", { method: "POST",
+                                                               body: JSON.stringify({ vale: o.vale }) });
+            const f = hecho.hecho ? "hecho" : "no he podido: " + (hecho.detalle || "");
+            burbuja("el", f); await Habla.di(f);
+            cargaPendientes();                 // la lista se recarga: lo cerrado desaparece
+          } catch (e) { burbuja("el", e.message); await Habla.di(e.message); }
+        } else {
+          burbuja("el", "vale, lo dejo"); await Habla.di("vale, lo dejo");
+        }
+        continue;
+      }
+      if (o.estado !== "no_es_orden") {
+        burbuja("el", o.decir); await Habla.di(o.decir);
+        continue;
+      }
+      // No era una orden: es una pregunta, y preguntar cuesta.
+      const respuesta = await preguntar(oido.texto);
+      if (respuesta) await Habla.di(respuesta);
+    }
+  } finally {
+    conversando = false;
+    b.classList.remove("oyendo");
+    dice.textContent = "";
+  }
+}
+
+if (Voz.hay) {
+  $("#mic-pregunta").hidden = false;
+  $("#mic-pregunta").onclick = conversa;
+}
 
 $("#btn-chat").onclick = () => abreCapa("capa-chat");
 $("#btn-buscar").onclick = () => abreCapa("capa-buscar");

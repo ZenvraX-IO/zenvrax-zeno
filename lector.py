@@ -74,6 +74,9 @@ class Accion:
     efecto: str | None
     coste_api: bool
     url: str = ""
+    #: Si se puede deshacer. Viene del catalogo y sube hasta el front porque la VOZ lo necesita:
+    #: por voz solo se ejecuta lo que se deshace, y eso no se puede decidir sin este dato.
+    reversible: bool = False
 
     @property
     def se_puede_abrir(self) -> bool:
@@ -183,6 +186,7 @@ def _acciones(sistema: str, brutas: list, indice: dict) -> list:
             efecto=ficha.efecto if ficha else None,
             coste_api=bool(ficha and ficha.coste_api),
             url=a.get("url") or "",
+            reversible=bool(ficha and getattr(ficha, "reversible", False)),
         ))
     return fuera
 
@@ -293,6 +297,8 @@ def _aviso_suelto(sistema: str, n: dict) -> dict:
             "metodo": "PATCH",
             "cuerpo": {"status": "done"},
             "se_puede_abrir": False,
+            # Se deshace volviendo a abrir la tarea, asi que se puede cerrar hablando.
+            "reversible": True,
         }]
     return aviso
 

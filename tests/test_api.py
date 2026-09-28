@@ -81,6 +81,10 @@ def test_la_lista_de_endpoints_que_escriben_es_cerrada():
         "avisos_quitar",     # borra una suscripcion
         "avisos_suscribir",  # guarda una suscripcion del navegador
         "chat",              # gasta API
+        "api_orden",         # empareja una frase dicha con algo que ya esta en pantalla y
+                             # deja el vale listo. NO ejecuta: confirmar sigue siendo
+                             # accion_confirmar, con su diario. Y solo empareja lo
+                             # reversible: lo que publica no se hace hablando
         "correo_borrador",   # prepara el borrador; no toca Gmail
         "correo_borrador_confirmar",  # lo guarda en Gmail. NO envia: no hay camino que envie
         "correo_redactar",   # propone el texto con Haiku; no escribe nada

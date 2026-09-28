@@ -35,8 +35,8 @@ sys.path.insert(0, str(RAIZ))
 
 import lector                                    # noqa: E402
 from servicio import (avisos, chat as chat_mod, citas, clave as clave_mod,  # noqa: E402
-                      correo, diario, ejecutor, empuje, google, personal, ronda,
-                      sesion)
+                      correo, diario, ejecutor, empuje, google, ordenes, personal,
+                      ronda, sesion)
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -311,6 +311,14 @@ async def api_negocios(authorization: str = Header(default="")):
 
 # ---------------------------------------------------------------- J4: ejecutar una accion
 
+class Dicho(BaseModel):
+    frase: str
+    #: Si viene, la frase NO es una orden nueva: es la respuesta a la confirmacion de ese vale.
+    #: Se manda al servidor en vez de decidirlo en el navegador para que la regla de que cuenta
+    #: como un si viva en UN sitio, con sus tests, y no duplicada en JavaScript.
+    vale: str = ""
+
+
 class AccionPropuesta(BaseModel):
     op: str
     etiqueta: str
@@ -364,6 +372,61 @@ async def pin_abrir(body: Pin, authorization: str = Header(default="")):
 async def pin_estado(authorization: str = Header(default="")):
     _, token = _quien(authorization)
     return {"hay_pin": clave_mod.hay_pin(), "abierto": clave_mod.pin_abierto(_huella(token))}
+
+
+@app.post("/api/orden")
+async def api_orden(body: Dicho, authorization: str = Header(default="")):
+    """Una frase dicha en voz alta, emparejada con algo que ya esta en la pantalla.
+
+    NO EJECUTA: deja el vale preparado y devuelve la frase que hay que decir en alto para
+    confirmar. Ejecutar sigue siendo `/api/accion/confirmar`, la misma puerta de siempre y el
+    mismo diario. Esto solo evita tener que buscar el boton con el dedo.
+
+    QUE SE EMPAREJA. Solo lo que Zeno ya tenia delante en ese momento: no hay forma de nombrar
+    algo que no estuviera en la pantalla. Y de eso, solo lo reversible (lo decidio el operador el
+    28-sep): lo que sale al mundo sigue pidiendo el dedo y el PIN.
+
+    Cuesta cero: el emparejado es por reglas, no por modelo.
+    """
+    _quien(authorization)
+    if body.vale:
+        # Responder a la confirmacion. Aqui NO se ejecuta: se dice si el operador ha dicho que si,
+        # y quien ejecuta sigue siendo `/api/accion/confirmar`, con su vale de un solo uso y su
+        # diario. Un solo sitio por el que sale algo al mundo.
+        return {"estado": "si" if ordenes.dice_que_si(body.frase) else "no"}
+    lista, avisos_sueltos, _ = lector.pendientes()
+    # Las dos listas juntas, en la forma que espera el emparejador.
+    cosas = [{"titulo": p.titulo,
+              "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
+                            "coste_api": a.coste_api, "url": a.url,
+                            "reversible": a.reversible} for a in p.acciones]}
+             for p in lista] + avisos_sueltos
+    r = ordenes.empareja(body.frase, cosas)
+
+    if r["estado"] == "no_es_orden":
+        return {"estado": "no_es_orden"}
+    if r["estado"] == "no_entiendo":
+        return {"estado": "no_entiendo", "decir": "no te he entendido"}
+    if r["estado"] == "nada_encaja":
+        return {"estado": "nada_encaja", "decir": "no encuentro nada que se llame así"}
+    if r["estado"] == "varias":
+        cuales = ", o ".join(x[:60] for x in r["cuales"])
+        return {"estado": "varias", "decir": f"hay varias: {cuales}. ¿Cuál?"}
+    if r["estado"] == "no_por_voz":
+        return {"estado": "no_por_voz", "decir": r["por_que"]}
+
+    a, cosa = r["accion"], r["cosa"]
+    try:
+        vale = ejecutor.propone(a.get("op"), a.get("etiqueta"), a.get("url"), a.get("efecto"),
+                                bool(a.get("coste_api")), cosa.get("titulo", ""),
+                                a.get("metodo", "GET"), a.get("cuerpo"))
+    except ejecutor.NoSePuede as e:
+        return {"estado": "no_se_puede", "decir": str(e)}
+    return {"estado": "vale", "vale": vale["vale"],
+            "etiqueta": a.get("etiqueta"), "titulo": cosa.get("titulo", ""),
+            # La frase se dice TAL CUAL en alto, asi que nombra lo que se va a tocar. "¿Confirmas?"
+            # a secas obliga a recordar de que se hablaba, y hablando no hay pantalla que mirar.
+            "decir": f"{a.get('etiqueta')}: {cosa.get('titulo', '')}. ¿Lo hago?"}
 
 
 @app.post("/api/accion/proponer")
