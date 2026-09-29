@@ -1630,7 +1630,7 @@ async function cargaPersonal() {
       if (!negociosDelCorreo.includes(n)) negociosDelCorreo.push(n);
   if (!negociosDelCorreo.length) negociosDelCorreo = ["zenvrax"];
   html += '<div class="apartado">Sin leer · ' + correosEnPantalla.length + "</div>";
-  html += '<div id="lista-correos"></div>';
+  html += '<div class="filtros" id="pestanas-correo"></div><div id="lista-correos"></div>';
 
   c.innerHTML = html + pintaPieDeCuentas(cuentas);
   enchufaBotonesDeCuenta(c);
@@ -1968,10 +1968,10 @@ async function creaCita() {
 // Se guardan aparte para poder filtrar sin volver a pedirlos a Google: cada lectura son varias
 // llamadas a Gmail, y filtrar es una pregunta sobre lo que ya se tiene delante.
 let correosEnPantalla = [];
-//: Que negocios existen en el correo y cuales estan plegados. El plegado lo
-//: decide el operador y se respeta mientras la aplicacion siga abierta.
+//: Que cuentas existen en el correo y cual se esta viendo. La eleccion se respeta mientras la
+//: aplicacion siga abierta: al recargar vuelve a abrirse la que tenga correo.
 let negociosDelCorreo = [];
-const plegados = {};
+let cuentaVista = "";
 
 // UN GRUPO POR NEGOCIO, plegable (2026-09-29). El operador: *"los email, puedes tener un
 // desplegable por Zenvrax y otro por GutLyn? O separarlos de alguna manera"*.
@@ -1985,41 +1985,49 @@ const plegados = {};
 // Y UN NEGOCIO SIN CORREO NO DESAPARECE: sale su cabecera diciendo que esta limpio. Si se cayera
 // de la pantalla, no se sabria si es que no hay nada o que no se esta mirando, que es de donde
 // venimos.
+// UN BOTON POR CUENTA, y al pulsarlo salen los suyos. Segunda vuelta del mismo dia: primero
+// fueron grupos plegables y el operador lo prefirio asi, *"botones separados que cada vez que se
+// cliclen salgan los de la cuenta"*.
+//
+// Con dos cuentas y el movil en la mano, las pestañas ganan: se ve de un toque lo de una o lo de
+// la otra, sin desplazarse por la lista de la primera para llegar a la segunda.
+//
+// LOS BOTONES SALEN DE LAS CUENTAS CONECTADAS, no de los correos que hayan llegado hoy. Si el de
+// GutLyn desapareciera los dias sin correo, no se sabria si es que no hay nada o que no se esta
+// mirando, que es la duda de la que salio todo esto. Por eso el boton se queda con su cero.
 function pintaCorreos() {
-  const caja = $("#lista-correos");
+  const caja = $("#lista-correos"), cajaP = $("#pestanas-correo");
   if (!caja) return;
 
   const cuantos = {};
   for (const m of correosEnPantalla) cuantos[m.negocio] = (cuantos[m.negocio] || 0) + 1;
   // El dueño del buzon primero y el resto detras: es el orden en que llegan de `buzones`.
-  const grupos = negociosDelCorreo.length ? negociosDelCorreo : Object.keys(cuantos).sort();
+  const cuentas = negociosDelCorreo.length ? negociosDelCorreo : Object.keys(cuantos).sort();
 
-  let h = "";
-  if (!correosEnPantalla.length) {
-    h = '<div class="vacio">bandeja limpia</div>';
-  } else if (grupos.length < 2) {
-    h = pintaLosCorreos(correosEnPantalla);        // con un solo negocio, agrupar no dice nada
-  } else {
-    for (const n of grupos) {
-      const suyos = correosEnPantalla.filter(m => m.negocio === n);
-      const abierto = plegados[n] === undefined ? suyos.length > 0 : !plegados[n];
-      h += '<button class="apartado" data-grupo="' + esc(n) + '" style="width:100%;border:0;' +
-           'background:none;font:inherit;color:inherit;cursor:pointer;text-align:left">' +
-           esc(n) + '<span style="flex:1"></span><span style="color:var(--apagado)">' +
-           (suyos.length || "0") + "</span>" +
-           '<span style="color:var(--apagado);margin-left:8px">' + (abierto ? "⌄" : "›") +
-           "</span></button>";
-      if (!abierto) continue;
-      h += suyos.length ? pintaLosCorreos(suyos)
-                        : '<div class="vacio">nada sin leer de ' + esc(n) + "</div>";
-    }
+  // La primera vez se abre la que TIENE correo, no siempre la primera: entrar en una pestaña
+  // vacia teniendo la otra llena es empezar con un paso de mas.
+  if (!cuentaVista || !cuentas.includes(cuentaVista))
+    cuentaVista = cuentas.find(n => cuantos[n]) || cuentas[0];
+
+  if (cajaP) {
+    // Con una sola cuenta no hay nada entre lo que elegir: la fila se esconde en vez de ocupar
+    // sitio en la pantalla que mas se mira.
+    cajaP.innerHTML = cuentas.length < 2 ? "" : cuentas.map(n =>
+      '<button class="filtro' + (cuentaVista === n ? " on" : "") + '" data-cuenta="' + esc(n) +
+      '">' + esc(n) + " <b>" + (cuantos[n] || 0) + "</b></button>").join("");
+    cajaP.querySelectorAll("[data-cuenta]").forEach(b => b.onclick = () => {
+      cuentaVista = b.dataset.cuenta;
+      pintaCorreos();
+    });
   }
-  caja.innerHTML = h;
-  caja.querySelectorAll("[data-grupo]").forEach(b => b.onclick = () => {
-    const n = b.dataset.grupo;
-    plegados[n] = plegados[n] === undefined ? true : !plegados[n];
-    pintaCorreos();
-  });
+
+  const suyos = cuentas.length < 2
+    ? correosEnPantalla
+    : correosEnPantalla.filter(m => m.negocio === cuentaVista);
+  caja.innerHTML = suyos.length
+    ? pintaLosCorreos(suyos)
+    : '<div class="vacio">' + (correosEnPantalla.length
+        ? "nada sin leer de " + esc(cuentaVista) : "bandeja limpia") + "</div>";
   enchufaCorreos(caja);
 }
 

@@ -8,8 +8,11 @@ Ya existía un filtro por negocio, y estaba escondido SIEMPRE: el correo de GutL
 buzón como alias, la consulta traía los doce sin leer más recientes, y medido ese día había 50 sin
 leer en siete días con solo UNO de GutLyn. Así que el filtro veía un único negocio y se ocultaba.
 
-Dos cosas se arreglan a la vez: cada negocio pide los SUYOS (en `personal.py`), y aquí se agrupan
-en secciones en lugar de un filtro que hay que tocar para ver lo del otro.
+Dos cosas se arreglaron a la vez: cada negocio pide los SUYOS (en `personal.py`), y la
+pantalla los separa. La forma tuvo DOS vueltas el mismo día: primero grupos plegables, y al
+verlos el operador pidió pestañas, *"botones separados que cada vez que se cliclen salgan los
+de la cuenta"*. Con dos cuentas y el móvil en la mano, las pestañas ganan: se ve lo de una o
+lo de la otra de un toque, sin desplazarse por la primera lista para llegar a la segunda.
 """
 import importlib
 import sys
@@ -74,14 +77,15 @@ def test_un_correo_no_puede_salir_dos_veces(per, monkeypatch):
 
 # ---------------------------------------------------------------- la pantalla
 
-def test_un_negocio_sin_correo_no_desaparece():
-    """LO QUE MÁS IMPORTA AQUÍ. Si GutLyn se cayera de la pantalla los días que no tiene nada, el
-    operador no sabría si es que no hay correo o que no se está mirando, que es exactamente la
-    duda de la que salió este trabajo."""
+def test_una_cuenta_sin_correo_no_desaparece():
+    """LO QUE MÁS IMPORTA AQUÍ, y no cambia aunque cambie la forma de enseñarlo. Si el botón de
+    GutLyn se cayera los días sin correo, el operador no sabría si es que no hay nada o que no se
+    está mirando, que es la duda de la que salió este trabajo. El botón se queda con su cero."""
     i = WEB.index("function pintaCorreos")
-    cuerpo = WEB[i:i + 2400]
-    assert "negociosDelCorreo" in cuerpo, "los grupos salen de lo que HAY, no de lo que existe"
-    assert "nada sin leer de" in cuerpo, "un negocio vacío no dice que está vacío"
+    cuerpo = WEB[i:i + 2600]
+    assert "negociosDelCorreo" in cuerpo, "las pestañas salen de lo que HAY, no de lo que existe"
+    assert "nada sin leer de" in cuerpo, "una cuenta vacía no dice que está vacía"
+    assert '(cuantos[n] || 0)' in cuerpo, "un botón sin correo no enseña su cero"
 
 
 def test_los_grupos_salen_de_los_buzones_conectados():
@@ -93,8 +97,8 @@ def test_los_grupos_salen_de_los_buzones_conectados():
 
 
 def test_el_hueco_del_borrador_es_uno_solo():
-    """Con un `<div id="borrador">` por grupo, `$("#borrador")` cogería el primero y la respuesta
-    aparecería en el grupo equivocado."""
+    """Con más de un `<div id="borrador">`, `$("#borrador")` coge el primero y la respuesta sale
+    en el sitio equivocado."""
     assert WEB.count('id="borrador"') == 1, "hay más de un hueco de borrador"
 
 
@@ -105,12 +109,33 @@ def test_el_filtro_viejo_no_se_queda_a_medias():
     assert 'id="filtros"' not in WEB
 
 
-def test_con_un_solo_negocio_no_se_agrupa():
-    """Una cabecera "zenvrax" sobre la única lista que hay es una fila gastada en la pantalla que
+def test_con_una_sola_cuenta_no_hay_pestanas():
+    """Un botón solo, que no lleva a ningún sitio distinto, es una fila gastada en la pantalla que
     más se mira."""
+    # LA LINEA DE LAS PESTAÑAS, no "en algún sitio del cuerpo": esa condición aparece DOS veces
+    # (aquí y al filtrar la lista), así que buscarla suelta daba por bueno quitarla de una de las
+    # dos. Lo destapó probar el fallo, no leerlo.
+    i = WEB.index("cajaP.innerHTML")
+    linea = WEB[i:WEB.index(chr(10), i)]
+    assert "cuentas.length < 2" in linea, f"las pestañas salen con una sola cuenta: {linea.strip()}"
+
+
+def test_se_abre_la_cuenta_QUE_TIENE_correo():
+    """Entrar en la pestaña vacía teniendo la otra llena es empezar con un paso de más, y es lo
+    que pasaría cogiendo siempre la primera."""
     i = WEB.index("function pintaCorreos")
-    cuerpo = WEB[i:i + 2400]
-    assert "grupos.length < 2" in cuerpo
+    cuerpo = WEB[i:i + 2600]
+    assert "cuentas.find(n => cuantos[n])" in cuerpo, (
+        "la pestaña de arranque no mira cuál tiene correo")
+
+
+def test_al_pulsar_un_boton_se_ve_esa_cuenta():
+    """Lo que pidió el operador: *"botones separados que cada vez que se cliclen salgan los de la
+    cuenta"*. Sin el filtro, los botones cambiarían de color y la lista seguiría igual."""
+    i = WEB.index("function pintaCorreos")
+    cuerpo = WEB[i:i + 2600]
+    assert "data-cuenta" in cuerpo and "cuentaVista = b.dataset.cuenta" in cuerpo
+    assert "m.negocio === cuentaVista" in cuerpo, "la lista no se filtra por la pestaña elegida"
 
 
 # ---------------------------------------------------------------- lo que el front necesita
