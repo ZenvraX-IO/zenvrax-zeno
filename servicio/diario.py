@@ -31,8 +31,18 @@ import pathlib
 import time
 
 LIBRO = pathlib.Path(os.environ.get("ZENO_DIARIO", "/datos/hecho.jsonl"))
-#: Cuantos renglones se conservan. Mil son meses: lo viejo no ayuda a contestar ninguna de las tres
-#: preguntas de arriba, y un fichero que crece sin fin acaba siendo un problema de disco.
+
+#: CUANTO SOBREVIVE LO HECHO. El operador (2026-09-29): *"el historico realizado en trabajo no
+#: deberia sobrevivir mas de un dia, si no puede ser una lista interminable"*. Y tenia razon: la
+#: pantalla de Trabajo se habia llenado de tarjetas de dias anteriores y el trabajo de verdad
+#: quedaba debajo.
+#:
+#: SE GUARDAN DOS DIAS Y NO UNO por la frontera de medianoche: a las 00:05 lo de "hace un rato" es
+#: de ayer, y borrarlo dejaria la pantalla en blanco justo despues de haber estado trabajando.
+#: Verse, se ve solo lo de hoy.
+DIAS = 2
+#: Tope duro por si un dia hubiera un aluvion. Ya no es lo que marca la vida del diario, solo evita
+#: que un fichero crezca sin freno.
 TOPE = 1000
 
 
@@ -52,6 +62,7 @@ def apunta(que: dict) -> None:
                     if previo.read(1) != b"\n":
                         f.write(b"\n")
             f.write(crudo)
+        _limpia_lo_viejo()
     except Exception:                                    # noqa: BLE001
         # Si esto reventara despues de publicar, el operador veria un error y creeria que no salio,
         # cuando si salio. El diario es para mirar despues; la accion ya esta hecha.
@@ -91,3 +102,39 @@ def recorta() -> int:
         return len(lineas)
     LIBRO.write_text("\n".join(lineas[-TOPE:]) + "\n", encoding="utf-8")
     return TOPE
+
+
+def _limpia_lo_viejo() -> None:
+    """Tira lo que ya no es de hoy ni de ayer. Se llama al escribir, no desde un reloj.
+
+    AL ESCRIBIR Y NO CON UN CRON, por lo mismo que la limpieza de los enlaces de entrada: una
+    pieza mas que corre por su cuenta es una pieza mas que puede dejar de correr sin que nadie se
+    entere. Aqui se limpia cuando hay algo que limpiar, que es justo cuando se usa.
+    """
+    try:
+        lineas = LIBRO.read_text(encoding="utf-8").splitlines()
+    except Exception:                                    # noqa: BLE001
+        return
+    corte = time.time() - DIAS * 86400
+    vivas = []
+    for linea in lineas[-TOPE:]:
+        try:
+            if float(json.loads(linea).get("cuando", 0)) >= corte:
+                vivas.append(linea)
+        except Exception:                                # noqa: BLE001
+            continue                                     # una linea rota no se conserva ni cuenta
+    if len(vivas) != len(lineas):
+        salto = chr(10)
+        LIBRO.write_text((salto.join(vivas) + salto) if vivas else "", encoding="utf-8")
+
+
+def de_hoy() -> list[dict]:
+    """Lo hecho HOY, del mas reciente al mas viejo, con su recuento por tipo.
+
+    El dia se corta por la hora LOCAL del servidor y no por UTC: "hoy" para el operador empieza
+    cuando se levanta, no a la una de la madrugada.
+    """
+    from datetime import date, datetime
+    hoy = date.today()
+    return [x for x in lee(TOPE)
+            if x.get("cuando") and datetime.fromtimestamp(x["cuando"]).date() == hoy]

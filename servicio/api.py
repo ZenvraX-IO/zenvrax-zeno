@@ -554,16 +554,40 @@ async def accion_confirmar(body: ValeDeAccion, authorization: str = Header(defau
 
 
 @app.get("/api/hecho")
-async def api_hecho(cuantos: int = Query(default=30, ge=1, le=200),
-                    authorization: str = Header(default="")):
-    """Lo que Zeno ha hecho, del mas reciente al mas viejo.
+async def api_hecho(authorization: str = Header(default="")):
+    """Lo que Zeno ha hecho HOY, contado por tipo y con el detalle detras.
 
     Contesta a la pregunta que aparecio el dia que Zeno empezo a publicar: si algo salio desde aqui
     o desde otro sitio. Y los intentos de los que no se supo el resultado salen marcados, porque son
     justo los que hay que ir a mirar.
+
+    SOLO HOY, Y CONTADO (2026-09-29). El operador: *"el historico realizado en trabajo no deberia
+    sobrevivir mas de un dia, si no puede ser una lista interminable"*. Con una captura donde la
+    pestaña Trabajo eran veintitantas tarjetas de "Saltar hoy" y el trabajo de verdad quedaba por
+    debajo del pliegue.
+
+    EL RECUENTO SE HACE AQUI y no en la pantalla: es lo unico que se mira el 90% de las veces
+    ("cuanto llevo hoy"), y calcularlo en el servidor deja el front con una linea que pintar en vez
+    de una lista que recorrer.
     """
     _quien(authorization)
-    return {"hecho": diario.lee(cuantos)}
+    hoy = diario.de_hoy()
+    # Se agrupa por la ETIQUETA, que es lo que el operador reconoce ("Saltar hoy", "Respondi"),
+    # no por `op`, que es el nombre tecnico de la accion.
+    cuenta: dict[str, int] = {}
+    for x in hoy:
+        clave = (x.get("etiqueta") or x.get("op") or "otra").strip()
+        cuenta[clave] = cuenta.get(clave, 0) + 1
+    # De mas a menos: lo que mas has repetido hoy es lo que resume el dia.
+    resumen = [{"que": k, "cuantas": v}
+               for k, v in sorted(cuenta.items(), key=lambda kv: (-kv[1], kv[0]))]
+    return {
+        "hecho": hoy[:40],          # el detalle, por si se despliega; 40 son de sobra para un dia
+        "cuantas": len(hoy),
+        "resumen": resumen,
+        # Lo que hay que ir a mirar: un intento del que no se supo el resultado.
+        "dudosas": sum(1 for x in hoy if x.get("resultado") == "no_se_sabe"),
+    }
 
 
 # ---------------------------------------------------------------- la documentación

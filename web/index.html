@@ -951,30 +951,63 @@ async function haceAccion() {
 // ---------------------------------------------------------------- lo que Zeno ha hecho
 //
 // Aparecio con J4: desde que Zeno publica, la primera pregunta al ver algo publicado que no
-// recuerdas es si salio desde aqui. Va al final de Pendiente y no en Hoy, que se queda corta.
+// recuerdas es si salio desde aqui.
+//
+// UNA LINEA, NO UNA LISTA (2026-09-29). El operador, con una captura donde esto eran veintitantas
+// tarjetas de "Saltar hoy" y el trabajo de verdad quedaba por debajo del pliegue: *"el historico
+// realizado en trabajo no deberia sobrevivir mas de un dia, si no puede ser una lista
+// interminable. Ponlo de otra manera que se vea, pero que se autoborre cada dia"*.
+//
+// Asi que se resume: "23 cosas · 14 saltar hoy, 6 respondi, 3 publicado", y el detalle se despliega
+// solo si se toca. Lo que casi siempre se quiere saber es CUANTO llevas, no cada linea.
+//
+// Y solo sale lo de HOY: el servidor filtra por el dia y el diario tira lo que pasa de dos dias.
+// Dos y no uno por la frontera de medianoche, que si no a las 00:05 la pantalla sale vacia justo
+// despues de haber estado trabajando.
 
 async function pintaHecho() {
   const caja = $("#lo-hecho");
   if (!caja) return;
   let d;
-  try { d = await api("/api/hecho?cuantos=12"); } catch { return; }
-  const lista = d.hecho || [];
-  if (!lista.length) return;
+  try { d = await api("/api/hecho"); } catch { return; }
+  if (!d.cuantas) { caja.innerHTML = ""; return; }   // un dia sin nada no gasta ni una linea
 
-  let h = '<div class="apartado">Lo que he hecho</div>';
-  for (const x of lista) {
-    const cuando = new Date((x.cuando || 0) * 1000);
-    const marca = x.resultado === "no_se_sabe"
-      ? '<span class="marca-accion m-mundo">no se sabe</span>'
-      : x.resultado === "error" ? '<span class="marca-accion m-mundo">falló</span>'
-      : x.publica ? '<span class="marca-accion m-cuesta">publicado</span>' : "";
-    h += '<div class="cuenta"><div class="c"><b>' + esc(x.etiqueta || x.op) + " " + marca +
-         "</b><span>" + esc(x.titulo || "") + " · " +
-         cuando.toLocaleString("es-ES", { day: "numeric", month: "short",
-                                          hour: "2-digit", minute: "2-digit" }) +
-         "</span></div></div>";
-  }
-  caja.innerHTML = h;
+  const trozos = (d.resumen || []).map(r => r.cuantas + " " + r.que.toLowerCase());
+  const dudosas = d.dudosas
+    ? ' <span class="marca-accion m-mundo">' + d.dudosas + " sin confirmar</span>" : "";
+
+  caja.innerHTML =
+    '<div class="apartado">Hoy has hecho</div>' +
+    '<button class="cuenta" id="hecho-abrir" style="width:100%;text-align:left;border:0;' +
+    'font:inherit;color:inherit;cursor:pointer">' +
+    '<div class="c"><b>' + d.cuantas + (d.cuantas === 1 ? " cosa" : " cosas") + dudosas +
+    '</b><span>' + esc(trozos.join(" · ") || "") + "</span></div>" +
+    '<span style="color:var(--apagado);font-size:18px" id="hecho-flecha">›</span></button>' +
+    '<div id="hecho-detalle" hidden></div>';
+
+  $("#hecho-abrir").onclick = () => {
+    const det = $("#hecho-detalle");
+    det.hidden = !det.hidden;
+    $("#hecho-flecha").textContent = det.hidden ? "›" : "⌄";
+    // Se pinta la PRIMERA vez que se abre, no al cargar: si no, la lista larga seguiria
+    // construyendose entera en cada visita aunque nadie la mire.
+    if (!det.dataset.puesto) {
+      det.innerHTML = (d.hecho || []).map(x => {
+        const cuando = new Date((x.cuando || 0) * 1000);
+        const marca = x.resultado === "no_se_sabe"
+          ? '<span class="marca-accion m-mundo">no se sabe</span>'
+          : x.resultado === "error" ? '<span class="marca-accion m-mundo">falló</span>'
+          : x.publica ? '<span class="marca-accion m-cuesta">publicado</span>' : "";
+        return '<div class="ficha" style="align-items:flex-start"><span style="flex:1">' +
+               esc(x.etiqueta || x.op) + " " + marca +
+               '<span style="display:block;color:var(--apagado);font-size:11.5px;margin-top:2px">' +
+               esc(x.titulo || "") + " · " +
+               cuando.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) +
+               "</span></span></div>";
+      }).join("");
+      det.dataset.puesto = "1";
+    }
+  };
 }
 
 // ---------------------------------------------------------------- buscar
