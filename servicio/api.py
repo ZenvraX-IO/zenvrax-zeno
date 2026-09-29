@@ -35,8 +35,8 @@ sys.path.insert(0, str(RAIZ))
 
 import lector                                    # noqa: E402
 from servicio import (avisos, chat as chat_mod, citas, clave as clave_mod,  # noqa: E402
-                      correo, diario, ejecutor, empuje, google, memoria, ordenes,
-                      personal, ronda, rostro, sesion)
+                      correo, diario, ejecutor, empuje, entrada, google, memoria,
+                      ordenes, personal, ronda, rostro, sesion)
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -657,6 +657,32 @@ async def chat(body: Pregunta, authorization: str = Header(default="")):
     memoria.guarda_turno("tu", pregunta)
     memoria.guarda_turno("zeno", salida.get("respuesta", ""))
     return salida
+
+
+# ---------------------------------------------------------------- abrir sin contrasena
+
+class Abrir(BaseModel):
+    url: str
+
+
+@app.post("/api/abrir")
+async def api_abrir(body: Abrir, authorization: str = Header(default="")):
+    """Devuelve un enlace que ENTRA en el cockpit o en Xrise, sin pedir la contrasena.
+
+    El operador (2026-09-29): *"me envia a internet y de ahi tengo que volver a validar la
+    contrasena y todo, y no tiene mucho sentido"*. En el iPhone cada aplicacion instalada tiene su
+    propio almacen, asi que el enlace se abre donde no hay sesion.
+
+    NO ES UN ENDPOINT QUE ESCRIBA NADA AQUI: le pide el enlace al sistema de destino, que es quien
+    decide si lo da. Si no se puede, devuelve el mismo enlace que recibio y el front abre ese: la
+    contrasena volvera a pedirse, que es exactamente lo de antes. Degradar, no romper.
+    """
+    _quien(authorization)
+    url = (body.url or "").strip()
+    if not url:
+        raise HTTPException(422, "falta la dirección")
+    bueno = entrada.enlace_que_entra(url)
+    return {"url": bueno or url, "entra_solo": bool(bueno)}
 
 
 # ---------------------------------------------------------------- lo que Zeno recuerda

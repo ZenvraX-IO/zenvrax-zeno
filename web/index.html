@@ -2402,6 +2402,55 @@ if (Voz.hay) {
   $("#mic-pregunta").onclick = conversa;
 }
 
+
+// ------------------------------------------------------------------ abrir sin volver a entrar
+//
+// EL CASO (2026-09-29). El operador: *"una vez que le doy a abrir desde su plataforma... me envia a
+// internet y de ahi tengo que volver a validar la contrasena y todo, y no tiene mucho sentido"*.
+//
+// En el iPhone cada aplicacion instalada tiene su PROPIO almacen, separado de Safari. El cockpit
+// guarda su sesion ahi dentro; este enlace se abre en otro almacen, donde no hay nada. Y saltar de
+// una aplicacion instalada a otra no se puede en iOS.
+//
+// UN SOLO SITIO Y NO DIEZ. Esto se engancha a TODOS los enlaces de una vez, en lugar de cambiar
+// los diez `<a href>` que hay repartidos por la pantalla. Asi tambien vale para los que se
+// añadan mañana, que es donde se habria colado el primer olvido.
+//
+// SI ALGO FALLA SE ABRE EL DE SIEMPRE. El sistema caido, la clave retirada o una version vieja sin
+// ese endpoint acaban en el enlace normal, que pedira la contrasena como hasta hoy. Lo que no
+// puede pasar es que el operador se quede sin poder abrir lo que estaba mirando.
+const CASAS = ["cockpit.zenvrax.com", "xrise.zenvrax.com"];
+
+function esDeLasCasas(href) {
+  try { return CASAS.includes(new URL(href, location.href).hostname); } catch { return false; }
+}
+
+document.addEventListener("click", async (ev) => {
+  const a = ev.target && ev.target.closest && ev.target.closest("a[href]");
+  if (!a || !esDeLasCasas(a.href)) return;
+  // Si ya se esta pidiendo, se deja pasar: el segundo toque abre el de siempre en vez de quedarse
+  // colgado. Un boton que no responde es peor que uno que pide la contrasena.
+  if (a.dataset.abriendo === "1") return;
+  ev.preventDefault();
+  a.dataset.abriendo = "1";
+  const antes = a.textContent;
+  // La pestaña se abre ANTES de pedir el enlace, y con ella ya en la mano se cambia su direccion.
+  // Abrirla despues del `await` haria que Safari la bloqueara: solo deja abrir pestañas como
+  // respuesta directa a un toque, y para entonces el toque ya paso.
+  const pestana = window.open("", "_blank", "noopener");
+  try {
+    const r = await api("/api/abrir", { method: "POST", body: JSON.stringify({ url: a.href }) });
+    if (pestana) pestana.location.replace(r.url || a.href);
+    else location.href = r.url || a.href;       // el navegador no dejo abrir pestaña: se va aqui
+  } catch (e) {
+    if (pestana) pestana.location.replace(a.href);
+    else location.href = a.href;
+  } finally {
+    a.dataset.abriendo = "";
+    if (antes !== undefined) a.textContent = antes;
+  }
+}, true);
+
 $("#btn-chat").onclick = () => abreCapa("capa-chat");
 document.addEventListener("click", (e) => {
   const f = e.target.closest("[data-cola]");

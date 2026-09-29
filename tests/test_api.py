@@ -101,6 +101,9 @@ def test_la_lista_de_endpoints_que_escriben_es_cerrada():
         "entrar_con_clave",  # cambia la clave propia por un token
         "google_conectar",   # devuelve la direccion de Google; no toca ninguna cola
         "google_olvidar",    # retira un permiso; solo quita
+        "api_abrir",          # pide al cockpit o a Xrise un enlace que ENTRA sin
+                             # contrasena. No escribe nada aqui: quien decide si lo da
+                             # es el sistema de destino, con su propia puerta
         "api_memoria_apunta",  # guarda un apunte en el fichero de Zeno. No sale a la red
         "api_memoria_olvida",  # lo tacha. Sin esto la memoria no se podria corregir
         "api_hilo_borra",    # corta la conversacion guardada. No toca los apuntes
