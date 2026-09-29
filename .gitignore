@@ -1,0 +1,9 @@
+# Lo que Python compila solo. Estaban versionados (36 ficheros) desde que el repo graduo, asi que
+# cada vez que corrian los tests el arbol salia "sucio" y habia que mirar si era trabajo o ruido.
+__pycache__/
+*.py[cod]
+
+# Lo que dejan las herramientas al pasar.
+.pytest_cache/
+.playwright/
+*.png.tmp
