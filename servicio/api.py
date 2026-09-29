@@ -36,7 +36,7 @@ sys.path.insert(0, str(RAIZ))
 import lector                                    # noqa: E402
 from servicio import (avisos, chat as chat_mod, citas, clave as clave_mod,  # noqa: E402
                       correo, diario, ejecutor, empuje, entrada, google, memoria,
-                      ordenes, personal, ronda, rostro, sesion)
+                      ocultos, ordenes, personal, ronda, rostro, sesion)
 
 WEB = RAIZ / "web"
 #: El chat gasta dinero (medido: ~$0,006 por pregunta). Nace APAGADO: se enciende cuando el
@@ -709,6 +709,41 @@ async def api_abrir(body: Abrir, authorization: str = Header(default="")):
     return {"url": bueno or url, "entra_solo": bool(bueno)}
 
 
+# ---------------------------------------------------------------- quitar correo de en medio
+
+class CorreoOculto(BaseModel):
+    id: str
+
+
+@app.post("/api/correo/ocultar")
+async def correo_ocultar(body: CorreoOculto, authorization: str = Header(default="")):
+    """Quita un correo de la bandeja de Zeno. NO toca Gmail.
+
+    El operador (2026-09-29), despues de preguntar si se podia borrar correo desde aqui: *"lo unico
+    es no verlo en Zeno, aun cuando siga en Gmail"*.
+
+    Y eso no necesita ningun permiso nuevo. Borrar o archivar exigiria autorizar `gmail.modify`, o
+    sea una llave capaz de equivocarse con el correo de verdad; esto es una lista en el volumen de
+    Zeno. Si se borrara entera, lo peor que pasa es que vuelvan a verse unos correos.
+    """
+    _quien(authorization)
+    if not (body.id or "").strip():
+        raise HTTPException(422, "falta el correo")
+    ocultos.oculta(body.id)
+    return {"oculto": body.id, "cuantos": ocultos.cuantos()}
+
+
+@app.post("/api/correo/mostrar")
+async def correo_mostrar(authorization: str = Header(default="")):
+    """Devuelve a la bandeja TODO lo que se habia escondido. El deshacer.
+
+    Sin esto, un toque por error esconde un correo para siempre sin forma de recuperarlo desde el
+    movil, que es donde se usa. Y uno vuelve a mirar Gmail, que es de lo que veniamos huyendo.
+    """
+    _quien(authorization)
+    return {"vuelven": ocultos.vacia()}
+
+
 # ---------------------------------------------------------------- lo que Zeno recuerda
 
 class Apunte(BaseModel):
@@ -1089,8 +1124,17 @@ async def api_personal(authorization: str = Header(default="")):
     # correo y no se sabia si es que no hay o que no se esta mirando. `bandeja()` ya lo construia
     # y se quedaba aqui dentro: el front pedia algo que el servidor nunca mandaba, y los ocho
     # tests pasaban porque ninguno miraba la respuesta entera. Lo vio el movil.
-    return {"correos": datos["correos"], "agenda": datos["agenda"],
+    # LO QUE EL OPERADOR HA QUITADO DE EN MEDIO no se vuelve a enseñar. El correo sigue intacto y
+    # sin leer en Gmail: esto es una lista de Zeno y solo afecta a esta pantalla. Ver
+    # `servicio/ocultos.py`.
+    escondidos = ocultos.cuales()
+    visibles = [c for c in datos["correos"] if c.get("id") not in escondidos]
+    return {"correos": visibles, "agenda": datos["agenda"],
             "cuentas": datos["cuentas"], "buzones": datos.get("buzones", []),
+            # Cuantos se estan escondiendo AHORA MISMO, no cuantos hay en la lista: si dijera los
+            # de la lista entera, contaria correos de hace semanas que ya no saldrian igual y el
+            # numero no cuadraria con lo que se puede recuperar.
+            "ocultos": sum(1 for c in datos["correos"] if c.get("id") in escondidos),
             "fallos": fallos}
 
 

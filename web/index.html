@@ -1621,6 +1621,7 @@ async function cargaPersonal() {
   }
 
   correosEnPantalla = datos.correos || [];
+  ocultosEnZeno = datos.ocultos || 0;
   // LOS NEGOCIOS QUE EXISTEN, no los que hoy tienen correo. Si GutLyn desapareciera los dias que
   // no tiene nada, el operador no sabria si es que no hay o que no se esta mirando. Salen de los
   // buzones conectados, que es donde estan declarados.
@@ -1972,6 +1973,9 @@ let correosEnPantalla = [];
 //: aplicacion siga abierta: al recargar vuelve a abrirse la que tenga correo.
 let negociosDelCorreo = [];
 let cuentaVista = "";
+//: Cuantos correos se estan escondiendo en Zeno ahora mismo. Lo dice el servidor al cargar y sube
+//: al quitar uno, para que el deshacer aparezca sin tener que recargar nada.
+let ocultosEnZeno = 0;
 
 // UN GRUPO POR NEGOCIO, plegable (2026-09-29). El operador: *"los email, puedes tener un
 // desplegable por Zenvrax y otro por GutLyn? O separarlos de alguna manera"*.
@@ -2024,11 +2028,26 @@ function pintaCorreos() {
   const suyos = cuentas.length < 2
     ? correosEnPantalla
     : correosEnPantalla.filter(m => m.negocio === cuentaVista);
-  caja.innerHTML = suyos.length
+  caja.innerHTML = (suyos.length
     ? pintaLosCorreos(suyos)
     : '<div class="vacio">' + (correosEnPantalla.length
-        ? "nada sin leer de " + esc(cuentaVista) : "bandeja limpia") + "</div>";
+        ? "nada sin leer de " + esc(cuentaVista) : "bandeja limpia") + "</div>")
+    // EL DESHACER TIENE QUE VERSE. Sin esto, un toque por error esconde un correo para siempre y
+    // el unico camino de vuelta es abrir Gmail, que es de lo que veniamos huyendo.
+    + (ocultosEnZeno
+        ? '<button class="b sin" id="ver-ocultos" style="margin-top:10px">' + ocultosEnZeno +
+          (ocultosEnZeno === 1 ? " quitado · devolverlo" : " quitados · devolverlos") + "</button>"
+        : "");
   enchufaCorreos(caja);
+  const vo = $("#ver-ocultos");
+  if (vo) vo.onclick = async () => {
+    vo.disabled = true; vo.textContent = "…";
+    try {
+      await api("/api/correo/mostrar", { method: "POST" });
+      ocultosEnZeno = 0;
+      cargaPersonal();        // aqui SI se recarga: los correos que vuelven hay que ir a buscarlos
+    } catch (e) { vo.disabled = false; vo.textContent = "no he podido"; }
+  };
 }
 
 
@@ -2043,8 +2062,12 @@ function pintaLosCorreos(lista) {
          '<div class="as">' + esc(m.asunto) + "</div>" +
          '<div class="re">' + esc(m.resumen) + "</div></a>";
     if (m.id)
+      // "Quitar" esconde el correo SOLO en Zeno: sigue en Gmail, sin leer y sin enterarse. El
+      // operador (29-sep): *"lo unico es no verlo en Zeno, aun cuando siga en Gmail"*. Va en texto
+      // pequeño y al lado de responder, no como boton grande: es limpieza, no una decision.
       h += '<span class="acciones-cita"><button data-responder="' + esc(m.id) +
-           '">responder</button></span>';
+           '">responder</button><button data-ocultar="' + esc(m.id) +
+           '">quitar</button></span>';
     h += "</div>";
   }
   return h;
@@ -2058,6 +2081,21 @@ function enchufaCorreos(caja) {
   if (!$("#borrador")) caja.insertAdjacentHTML("beforeend", '<div id="borrador"></div>');
   caja.querySelectorAll("[data-responder]").forEach(b =>
     b.onclick = () => abreBorrador(b.dataset.responder));
+  caja.querySelectorAll("[data-ocultar]").forEach(b => b.onclick = async () => {
+    const id = b.dataset.ocultar;
+    b.disabled = true; b.textContent = "…";
+    try {
+      await api("/api/correo/ocultar", { method: "POST", body: JSON.stringify({ id }) });
+      // Se quita de la lista que ya esta en memoria y se repinta, sin volver a pedir la bandeja:
+      // esa llamada tarda lo suyo (habla con Gmail) y el correo desapareceria segundos despues de
+      // tocar, que se lee como que el boton no ha hecho nada.
+      correosEnPantalla = correosEnPantalla.filter(m => m.id !== id);
+      ocultosEnZeno += 1;
+      pintaCorreos();
+    } catch (e) {
+      b.disabled = false; b.textContent = "no he podido";
+    }
+  });
 }
 
 function enchufaBotonesDeCuenta(c) {

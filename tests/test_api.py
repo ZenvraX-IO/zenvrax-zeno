@@ -101,6 +101,9 @@ def test_la_lista_de_endpoints_que_escriben_es_cerrada():
         "entrar_con_clave",  # cambia la clave propia por un token
         "google_conectar",   # devuelve la direccion de Google; no toca ninguna cola
         "google_olvidar",    # retira un permiso; solo quita
+        "correo_ocultar",     # quita un correo de la bandeja de ZENO. No toca Gmail: es
+                             # una lista en el volumen, sin permiso nuevo
+        "correo_mostrar",     # el deshacer: los devuelve todos
         "api_abrir",          # pide al cockpit o a Xrise un enlace que ENTRA sin
                              # contrasena. No escribe nada aqui: quien decide si lo da
                              # es el sistema de destino, con su propia puerta
