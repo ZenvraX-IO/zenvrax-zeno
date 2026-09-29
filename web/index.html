@@ -222,8 +222,21 @@
           padding:7px 13px;font-size:12.5px;color:var(--gris);cursor:pointer;min-height:34px}
   .filtro.on{border-color:var(--ambar);color:var(--ambar);background:var(--ambar-suave)}
   .filtro b{color:inherit;font-weight:600}
+  /* DESLIZAR PARA QUITAR. La tarjeta se mueve sobre una franja que dice "quitar", como en Mail
+     del iPhone. `touch-action:pan-y` es lo que hace que esto no rompa el scroll: el navegador se
+     queda con el movimiento vertical y a nosotros nos deja el horizontal. Sin eso, el dedo que
+     baja por la lista arrastraria tarjetas de medio lado. */
+  .desliza{position:relative;overflow:hidden;touch-action:pan-y}
+  .desliza .detras{position:absolute;top:0;right:0;bottom:0;width:104px;display:flex;
+                   align-items:center;justify-content:center;background:#3a1f1f;color:#ff9b9b;
+                   font-size:12.5px;letter-spacing:.3px;pointer-events:none}
+  /* El fondo OPACO es obligatorio: sin el se transparenta la franja de debajo y la tarjeta
+     parece rota mientras se arrastra. */
   .correo{display:block;text-decoration:none;color:inherit;padding:12px 0;
-          border-top:1px solid var(--linea);min-height:44px}
+          border-top:1px solid var(--linea);min-height:44px;background:var(--negro);
+          position:relative;will-change:transform}
+  .desliza .correo{transition:transform .18s ease}
+  .desliza.arrastrando .correo{transition:none}
   .correo:last-of-type{border-bottom:1px solid var(--linea)}
   .correo:active{background:#141418}
   .correo .de{display:flex;gap:8px;align-items:baseline;margin-bottom:4px}
@@ -2054,7 +2067,9 @@ function pintaCorreos() {
 function pintaLosCorreos(lista) {
   let h = "";
   for (const m of lista) {
-    h += '<div class="correo">' +
+    h += (m.id ? '<div class="desliza" data-desliza="' + esc(m.id) +
+                 '"><div class="detras">quitar</div>' : "") +
+         '<div class="correo">' +
          '<a href="' + esc(m.abrir) + '" target="_blank" rel="noopener" ' +
          'style="text-decoration:none;color:inherit;display:block">' +
          '<span class="de"><b>' + esc(soloNombre(m.de)) + "</b><i>" + esc(m.negocio) + " · " +
@@ -2062,13 +2077,11 @@ function pintaLosCorreos(lista) {
          '<div class="as">' + esc(m.asunto) + "</div>" +
          '<div class="re">' + esc(m.resumen) + "</div></a>";
     if (m.id)
-      // "Quitar" esconde el correo SOLO en Zeno: sigue en Gmail, sin leer y sin enterarse. El
-      // operador (29-sep): *"lo unico es no verlo en Zeno, aun cuando siga en Gmail"*. Va en texto
-      // pequeño y al lado de responder, no como boton grande: es limpieza, no una decision.
       h += '<span class="acciones-cita"><button data-responder="' + esc(m.id) +
-           '">responder</button><button data-ocultar="' + esc(m.id) +
-           '">quitar</button></span>';
-    h += "</div>";
+           '">responder</button></span>';
+    // QUITAR YA NO ES UN BOTON, es deslizar la tarjeta (eleccion del operador, 29-sep). La tarjeta
+    // queda mas limpia y el gesto es el que ya se tiene en el dedo de usar Mail.
+    h += "</div>" + (m.id ? "</div>" : "");
   }
   return h;
 }
@@ -2081,21 +2094,80 @@ function enchufaCorreos(caja) {
   if (!$("#borrador")) caja.insertAdjacentHTML("beforeend", '<div id="borrador"></div>');
   caja.querySelectorAll("[data-responder]").forEach(b =>
     b.onclick = () => abreBorrador(b.dataset.responder));
-  caja.querySelectorAll("[data-ocultar]").forEach(b => b.onclick = async () => {
-    const id = b.dataset.ocultar;
-    b.disabled = true; b.textContent = "…";
+  caja.querySelectorAll("[data-desliza]").forEach(enchufaDeslizar);
+}
+
+
+//: Cuanto hay que arrastrar para que cuente. Menos se dispara con el pulgar que solo pasaba por
+//: ahi; mas obliga a recorrer media pantalla en cada correo.
+const PARA_QUITAR = 88;
+
+
+// Deslizar una tarjeta hacia la izquierda para quitarla, como en Mail del iPhone.
+//
+// TRES COSAS QUE NO SE VEN Y SON LAS QUE HACEN QUE FUNCIONE:
+//
+//  · El gesto NO se toma hasta saber que es horizontal. Mientras el dedo baja, manda el scroll de
+//    la pagina; en cuanto se mueve mas a lo ancho que a lo alto, la tarjeta sigue al dedo. Sin
+//    esto, bajar por la lista arrastra tarjetas de medio lado.
+//  · Arrastrar NO abre el correo. Toda la tarjeta es un enlace a Gmail, asi que despues de un
+//    arrastre se traga el clic que el navegador dispara al soltar.
+//  · Solo hacia la IZQUIERDA. Hacia la derecha no hay nada que hacer, y dejarla moverse enseña un
+//    hueco vacio que parece un fallo.
+function enchufaDeslizar(caja) {
+  const tarjeta = caja.querySelector(".correo");
+  if (!tarjeta) return;
+  let x0 = 0, y0 = 0, dx = 0, decidido = null, tocando = false;
+
+  const mueve = (v) => { tarjeta.style.transform = v ? "translateX(" + v + "px)" : ""; };
+
+  caja.addEventListener("pointerdown", (e) => {
+    if (e.button && e.button !== 0) return;
+    tocando = true; decidido = null; dx = 0;
+    x0 = e.clientX; y0 = e.clientY;
+  });
+
+  caja.addEventListener("pointermove", (e) => {
+    if (!tocando) return;
+    const ax = e.clientX - x0, ay = e.clientY - y0;
+    if (decidido === null) {
+      if (Math.abs(ax) < 8 && Math.abs(ay) < 8) return;   // todavia no se sabe que gesto es
+      decidido = Math.abs(ax) > Math.abs(ay) ? "lado" : "vertical";
+      if (decidido === "lado") caja.classList.add("arrastrando");
+    }
+    if (decidido !== "lado") return;
+    dx = Math.min(0, ax);                                  // solo hacia la izquierda
+    mueve(Math.max(dx, -140));
+  });
+
+  const suelta = async () => {
+    if (!tocando) return;
+    tocando = false;
+    caja.classList.remove("arrastrando");
+    if (decidido !== "lado" || -dx < PARA_QUITAR) { mueve(0); dx = 0; return; }
+    // Se va del todo ANTES de que conteste el servidor: el gesto ya ha dicho lo que queria y
+    // esperar a la respuesta deja la tarjeta a medio camino, que parece que se ha colgado.
+    mueve(-caja.offsetWidth);
+    const id = caja.dataset.desliza;
     try {
       await api("/api/correo/ocultar", { method: "POST", body: JSON.stringify({ id }) });
-      // Se quita de la lista que ya esta en memoria y se repinta, sin volver a pedir la bandeja:
-      // esa llamada tarda lo suyo (habla con Gmail) y el correo desapareceria segundos despues de
-      // tocar, que se lee como que el boton no ha hecho nada.
       correosEnPantalla = correosEnPantalla.filter(m => m.id !== id);
       ocultosEnZeno += 1;
       pintaCorreos();
     } catch (e) {
-      b.disabled = false; b.textContent = "no he podido";
+      // No se pudo: la tarjeta VUELVE. Dejarla fuera mintiendo seria peor, porque al recargar
+      // reaparece y uno cree que el gesto no se guarda.
+      mueve(0); dx = 0;
     }
-  });
+  };
+
+  caja.addEventListener("pointerup", suelta);
+  caja.addEventListener("pointercancel", () => { tocando = false; mueve(0); dx = 0; });
+  // El clic se traga SOLO si hubo arrastre de verdad: si no, tocar la tarjeta dejaria de abrir el
+  // correo en Gmail, que es lo que se hace la mayoria de las veces.
+  caja.addEventListener("click", (e) => {
+    if (Math.abs(dx) > 6) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
 }
 
 function enchufaBotonesDeCuenta(c) {

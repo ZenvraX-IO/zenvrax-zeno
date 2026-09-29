@@ -151,15 +151,52 @@ def test_un_id_vacio_no_se_guarda(oc):
 WEB = (RAIZ / "web" / "index.html").read_text(encoding="utf-8")
 
 
-def test_el_boton_de_quitar_esta_en_cada_correo():
-    assert "data-ocultar" in WEB and '"/api/correo/ocultar"' in WEB
+def test_se_quita_deslizando_la_tarjeta():
+    """Era un botón de texto y el operador lo prefirió así (29-sep): el gesto que ya se tiene en
+    el dedo de usar Mail, y una tarjeta menos cargada."""
+    assert "data-desliza" in WEB and '"/api/correo/ocultar"' in WEB
+    assert "enchufaDeslizar" in WEB
+
+
+def test_el_gesto_no_rompe_el_scroll_de_la_lista():
+    """LO QUE MÁS SE ROMPE AL HACER ESTO. Sin decidir primero si el gesto es horizontal, bajar por
+    la lista arrastra tarjetas de medio lado; y sin `touch-action:pan-y`, el navegador no sabe que
+    el movimiento vertical sigue siendo suyo."""
+    assert "touch-action:pan-y" in WEB, "falta ceder el scroll vertical al navegador"
+    i = WEB.index("function enchufaDeslizar")
+    cuerpo = WEB[i:i + 3000]
+    assert 'Math.abs(ax) > Math.abs(ay)' in cuerpo, "el gesto se toma sin saber si es horizontal"
+
+
+def test_arrastrar_no_abre_el_correo():
+    """Toda la tarjeta es un enlace a Gmail: sin tragarse el clic posterior al arrastre, cada
+    gesto acabaría abriendo el correo que se quería quitar."""
+    i = WEB.index("function enchufaDeslizar")
+    cuerpo = WEB[i:i + 3000]
+    assert "preventDefault()" in cuerpo and "Math.abs(dx) >" in cuerpo
+
+
+def test_solo_se_desliza_hacia_la_izquierda():
+    """Hacia la derecha no hay nada que hacer, y dejarla moverse enseña un hueco vacío que parece
+    un fallo."""
+    i = WEB.index("function enchufaDeslizar")
+    assert "Math.min(0, ax)" in WEB[i:i + 3000]
+
+
+def test_si_falla_el_servidor_la_tarjeta_vuelve():
+    """Dejarla fuera mintiendo es peor: al recargar reaparece y uno cree que el gesto no se
+    guarda."""
+    i = WEB.index("function enchufaDeslizar")
+    cuerpo = WEB[i:i + 3000]
+    j = cuerpo.index("} catch")
+    assert "mueve(0)" in cuerpo[j:j + 300], "tras un fallo la tarjeta se queda fuera"
 
 
 def test_el_correo_desaparece_al_instante():
-    """Volver a pedir la bandeja tarda (habla con Gmail), y el correo se iría segundos después de
-    tocar: se lee como que el botón no ha hecho nada."""
-    i = WEB.index("data-ocultar]")
-    cuerpo = WEB[i:i + 1200]
+    """Volver a pedir la bandeja tarda (habla con Gmail), y el correo se iría segundos después del
+    gesto: se lee como que no ha hecho nada."""
+    i = WEB.index("function enchufaDeslizar")
+    cuerpo = WEB[i:i + 3000]
     assert "correosEnPantalla = correosEnPantalla.filter" in cuerpo
     assert "cargaPersonal()" not in cuerpo, "recarga la bandeja entera en vez de quitarlo y ya"
 
