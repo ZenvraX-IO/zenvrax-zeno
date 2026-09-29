@@ -1084,8 +1084,14 @@ async def api_personal(authorization: str = Header(default="")):
     """
     _quien(authorization)
     datos, fallos = personal.bandeja()
+    # `buzones` VIAJA porque la pantalla agrupa el correo por negocio y necesita saber que
+    # negocios EXISTEN, no cuales han recibido algo hoy. Sin esto, GutLyn desaparecia los dias sin
+    # correo y no se sabia si es que no hay o que no se esta mirando. `bandeja()` ya lo construia
+    # y se quedaba aqui dentro: el front pedia algo que el servidor nunca mandaba, y los ocho
+    # tests pasaban porque ninguno miraba la respuesta entera. Lo vio el movil.
     return {"correos": datos["correos"], "agenda": datos["agenda"],
-            "cuentas": datos["cuentas"], "fallos": fallos}
+            "cuentas": datos["cuentas"], "buzones": datos.get("buzones", []),
+            "fallos": fallos}
 
 
 # ---------------------------------------------------------------- la aplicación

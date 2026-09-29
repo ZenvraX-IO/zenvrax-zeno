@@ -111,3 +111,37 @@ def test_con_un_solo_negocio_no_se_agrupa():
     i = WEB.index("function pintaCorreos")
     cuerpo = WEB[i:i + 2400]
     assert "grupos.length < 2" in cuerpo
+
+
+# ---------------------------------------------------------------- lo que el front necesita
+
+def test_el_endpoint_manda_lo_que_la_pantalla_pide():
+    """EL FALLO QUE VIO EL MÓVIL Y NO LOS OCHO TESTS (2026-09-29).
+
+    La pantalla agrupa por `datos.buzones`, y `/api/personal` no lo devolvía: `bandeja()` lo
+    construía y se quedaba dentro. Resultado: cero grupos en producción con todo en verde, porque
+    ninguna prueba miraba que la respuesta trajera lo que el front consume.
+
+    Se cruzan las dos listas en vez de comprobar una clave suelta: así también salta el día que el
+    front empiece a usar algo nuevo.
+    """
+    import ast
+    import re
+
+    fuente = (RAIZ / "servicio" / "api.py").read_text(encoding="utf-8")
+    arbol = ast.parse(fuente)
+    devuelve = set()
+    for n in ast.walk(arbol):
+        if isinstance(n, ast.AsyncFunctionDef) and n.name == "api_personal":
+            for sub in ast.walk(n):
+                if isinstance(sub, ast.Dict):
+                    devuelve |= {k.value for k in sub.keys
+                                 if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+    assert devuelve, "no encuentro lo que devuelve api_personal"
+
+    # Lo que la pantalla lee de esa respuesta, tal cual está escrito en el front.
+    i = WEB.index("async function cargaPersonal")
+    pantalla = WEB[i:i + 4000]
+    pide = set(re.findall(r"\bdatos\.(\w+)", pantalla))
+    faltan = sorted(pide - devuelve)
+    assert not faltan, f"la pantalla lee {faltan} y el endpoint no lo manda"
