@@ -1621,8 +1621,16 @@ async function cargaPersonal() {
   }
 
   correosEnPantalla = datos.correos || [];
+  // LOS NEGOCIOS QUE EXISTEN, no los que hoy tienen correo. Si GutLyn desapareciera los dias que
+  // no tiene nada, el operador no sabria si es que no hay o que no se esta mirando. Salen de los
+  // buzones conectados, que es donde estan declarados.
+  negociosDelCorreo = [];
+  for (const b of (datos.buzones || []))
+    for (const n of (b.negocios || []))
+      if (!negociosDelCorreo.includes(n)) negociosDelCorreo.push(n);
+  if (!negociosDelCorreo.length) negociosDelCorreo = ["zenvrax"];
   html += '<div class="apartado">Sin leer · ' + correosEnPantalla.length + "</div>";
-  html += '<div class="filtros" id="filtros"></div><div id="lista-correos"></div>';
+  html += '<div id="lista-correos"></div>';
 
   c.innerHTML = html + pintaPieDeCuentas(cuentas);
   enchufaBotonesDeCuenta(c);
@@ -1960,37 +1968,64 @@ async function creaCita() {
 // Se guardan aparte para poder filtrar sin volver a pedirlos a Google: cada lectura son varias
 // llamadas a Gmail, y filtrar es una pregunta sobre lo que ya se tiene delante.
 let correosEnPantalla = [];
-let filtroNegocio = "";
+//: Que negocios existen en el correo y cuales estan plegados. El plegado lo
+//: decide el operador y se respeta mientras la aplicacion siga abierta.
+let negociosDelCorreo = [];
+const plegados = {};
 
+// UN GRUPO POR NEGOCIO, plegable (2026-09-29). El operador: *"los email, puedes tener un
+// desplegable por Zenvrax y otro por GutLyn? O separarlos de alguna manera"*.
+//
+// Antes habia un FILTRO (botones "Todos / zenvrax / gutlyn") que se escondia solo cuando habia un
+// unico negocio, y se escondia SIEMPRE: el correo de GutLyn llega al mismo buzon como alias, y la
+// consulta traia los doce mas recientes, que eran todos de Zenvrax. Arreglado en el servidor
+// (cada negocio pide los suyos), aqui se pasa a grupos: con un filtro hay que tocar para ver lo
+// del otro negocio, y con grupos se ven los dos de un vistazo.
+//
+// Y UN NEGOCIO SIN CORREO NO DESAPARECE: sale su cabecera diciendo que esta limpio. Si se cayera
+// de la pantalla, no se sabria si es que no hay nada o que no se esta mirando, que es de donde
+// venimos.
 function pintaCorreos() {
-  const cajaF = $("#filtros"), caja = $("#lista-correos");
-  if (!cajaF || !caja) return;
+  const caja = $("#lista-correos");
+  if (!caja) return;
 
   const cuantos = {};
   for (const m of correosEnPantalla) cuantos[m.negocio] = (cuantos[m.negocio] || 0) + 1;
-  const negocios = Object.keys(cuantos).sort();
-  // Con un solo negocio el filtro no filtra nada: se esconde en vez de ocupar una fila.
-  let f = "";
-  if (negocios.length > 1) {
-    f += '<button class="filtro' + (filtroNegocio ? "" : " on") + '" data-n="">Todos <b>' +
-         correosEnPantalla.length + "</b></button>";
-    for (const n of negocios)
-      f += '<button class="filtro' + (filtroNegocio === n ? " on" : "") + '" data-n="' + esc(n) +
-           '">' + esc(n) + " <b>" + cuantos[n] + "</b></button>";
+  // El dueño del buzon primero y el resto detras: es el orden en que llegan de `buzones`.
+  const grupos = negociosDelCorreo.length ? negociosDelCorreo : Object.keys(cuantos).sort();
+
+  let h = "";
+  if (!correosEnPantalla.length) {
+    h = '<div class="vacio">bandeja limpia</div>';
+  } else if (grupos.length < 2) {
+    h = pintaLosCorreos(correosEnPantalla);        // con un solo negocio, agrupar no dice nada
+  } else {
+    for (const n of grupos) {
+      const suyos = correosEnPantalla.filter(m => m.negocio === n);
+      const abierto = plegados[n] === undefined ? suyos.length > 0 : !plegados[n];
+      h += '<button class="apartado" data-grupo="' + esc(n) + '" style="width:100%;border:0;' +
+           'background:none;font:inherit;color:inherit;cursor:pointer;text-align:left">' +
+           esc(n) + '<span style="flex:1"></span><span style="color:var(--apagado)">' +
+           (suyos.length || "0") + "</span>" +
+           '<span style="color:var(--apagado);margin-left:8px">' + (abierto ? "⌄" : "›") +
+           "</span></button>";
+      if (!abierto) continue;
+      h += suyos.length ? pintaLosCorreos(suyos)
+                        : '<div class="vacio">nada sin leer de ' + esc(n) + "</div>";
+    }
   }
-  cajaF.innerHTML = f;
-  cajaF.querySelectorAll(".filtro").forEach(b => b.onclick = () => {
-    filtroNegocio = b.dataset.n;
+  caja.innerHTML = h;
+  caja.querySelectorAll("[data-grupo]").forEach(b => b.onclick = () => {
+    const n = b.dataset.grupo;
+    plegados[n] = plegados[n] === undefined ? true : !plegados[n];
     pintaCorreos();
   });
+  enchufaCorreos(caja);
+}
 
-  const lista = filtroNegocio
-    ? correosEnPantalla.filter(m => m.negocio === filtroNegocio)
-    : correosEnPantalla;
+
+function pintaLosCorreos(lista) {
   let h = "";
-  if (!lista.length)
-    h = '<div class="vacio">' + (correosEnPantalla.length ? "nada de " + esc(filtroNegocio)
-                                                          : "bandeja limpia") + "</div>";
   for (const m of lista) {
     h += '<div class="correo">' +
          '<a href="' + esc(m.abrir) + '" target="_blank" rel="noopener" ' +
@@ -2004,7 +2039,15 @@ function pintaCorreos() {
            '">responder</button></span>';
     h += "</div>";
   }
-  caja.innerHTML = h + '<div id="borrador"></div>';
+  return h;
+}
+
+
+function enchufaCorreos(caja) {
+  // El hueco del borrador va UNA vez al final de la lista entera, no dentro de cada grupo: si
+  // hubiera uno por grupo, `$("#borrador")` cogeria el primero y la respuesta saldria en el sitio
+  // equivocado.
+  if (!$("#borrador")) caja.insertAdjacentHTML("beforeend", '<div id="borrador"></div>');
   caja.querySelectorAll("[data-responder]").forEach(b =>
     b.onclick = () => abreBorrador(b.dataset.responder));
 }
