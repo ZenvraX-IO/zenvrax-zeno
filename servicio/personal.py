@@ -75,13 +75,41 @@ def _de_quien_es(destinos: str, negocios: list[str]) -> str:
     return negocios[0]
 
 
+def _filtro_del_negocio(cual: str, negocios: list[str]) -> str:
+    """El trozo de consulta que deja SOLO el correo de ese negocio.
+
+    POR QUE NO BASTA CON REPARTIR DESPUES (2026-09-29). El operador pidio separar el correo por
+    negocio. Antes se traian los 12 sin leer mas recientes y se repartian por destinatario, y eso
+    tiene un fallo que no se ve: medido ese dia, habia 50 sin leer en siete dias y solo UNO era de
+    GutLyn. Con doce, ese uno se quedaba fuera casi siempre, y el apartado de GutLyn habria salido
+    vacio sin estarlo. Un grupo vacio por el recorte se lee igual que uno vacio de verdad.
+
+    Asi que cada negocio pide los suyos: los 12 mas recientes DE CADA UNO.
+
+    El dueño del buzon se lleva "todo lo que NO es de los alias", y no una lista de sus propios
+    dominios: un correo dirigido a una direccion que nadie declaro tiene que aparecer en algun
+    sitio, y el sitio natural es el buzon que lo recibio.
+    """
+    otros = [n for n in negocios[1:] if google.direcciones().get(n)]
+    dominios = [google.direcciones()[n].rsplit("@", 1)[-1].lower() for n in otros]
+    if cual == negocios[0]:
+        return " ".join(f"-to:{d} -cc:{d}" for d in dominios)
+    d = google.direcciones().get(cual, "").rsplit("@", 1)[-1].lower()
+    return f"{{to:{d} cc:{d} deliveredto:{d}}}" if d else ""
+
+
 def correos(negocio: str, cuantos: int = 12, dias: int = 7,
-            buzon: str = "", negocios: list[str] | None = None) -> list[dict]:
-    """Los correos sin leer de la bandeja de un buzon. Lanza NoAutorizado si no hay permiso."""
+            buzon: str = "", negocios: list[str] | None = None,
+            solo_de: str = "") -> list[dict]:
+    """Los correos sin leer de la bandeja de un buzon. Lanza NoAutorizado si no hay permiso.
+
+    `solo_de` acota a un negocio (el dueño del buzon o uno de sus alias). Sin el, vienen todos.
+    """
     negocios = negocios or [negocio]
     buzon = buzon or google.CUENTAS.get(negocio, "")
     desde = (datetime.now(timezone.utc) - timedelta(days=dias)).strftime("%Y/%m/%d")
-    consulta = urllib.parse.quote(f"in:inbox is:unread after:{desde}")
+    filtro = _filtro_del_negocio(solo_de, negocios) if solo_de else ""
+    consulta = urllib.parse.quote(f"in:inbox is:unread after:{desde} {filtro}".strip())
     lista = google.pide(negocio, f"{GMAIL}/messages?maxResults={cuantos}&q={consulta}")
     fuera = []
     for m in lista.get("messages") or []:
@@ -171,6 +199,7 @@ def bandeja() -> tuple[dict, list[str]]:
     conectadas = google.conectadas()
     fuera: dict = {"correos": [], "agenda": [], "cuentas": conectadas, "buzones": []}
     fallos = []
+    vistos: set[str] = set()      # ids ya añadidos: un correo no puede salir dos veces
     for negocio in google.CUENTAS:
         if negocio not in conectadas:
             fallos.append(f"{google.CUENTAS[negocio]}: sin conectar todavia")
@@ -180,15 +209,41 @@ def bandeja() -> tuple[dict, list[str]]:
         principal = negocios[0]
         # Los alias declarados viajan con el buzon: son los que dan nombre al negocio de cada
         # correo, aunque no tengan autorizacion propia porque no la necesitan.
-        negocios = negocios + [n for n in google.ALIAS if n not in negocios]
+        #
+        # SOLO LOS QUE NO TIENEN BUZON PROPIO (29-sep). Antes se añadian TODOS a TODOS los buzones.
+        # Con uno solo daba igual; el dia que GutLyn tenga el suyo, el buzon de Zenvrax seguiria
+        # preguntando por correo de GutLyn y lo leeria de donde no es. Lo destapo un test que ya
+        # existia, al pasar a preguntar una vez por negocio.
+        con_buzon_propio = {n for n, d in conectadas.items() if (d or {}).get("buzon")}
+        negocios = negocios + [n for n in google.ALIAS
+                               if n not in negocios and n not in con_buzon_propio]
         fuera["buzones"].append({"buzon": buzon, "negocios": negocios,
                                  "alias_de": negocios[1:]})
-        try:
-            fuera["correos"] += correos(principal, buzon=buzon, negocios=negocios)
-        except google.NoAutorizado as e:
-            fallos.append(f"{buzon} (correos): {e}")
-        except Exception as e:                            # noqa: BLE001
-            fallos.append(f"{buzon} (correos): {type(e).__name__}")
+        # UNA CONSULTA POR NEGOCIO, no una y a repartir. Ver `_filtro_del_negocio`: con una sola,
+        # el negocio que recibe poco correo desaparecia detras del recorte.
+        #
+        # Y SE DEDUPLICA POR ID, que es la contrapartida de preguntar dos veces al MISMO buzon: si
+        # un filtro fallara o dos negocios reclamaran el mismo correo (va dirigido a los dos, por
+        # ejemplo), saldria repetido en la pantalla. Lo caze al romper los tests que ya vigilaban
+        # justo eso desde que existen los alias.
+        for cual in negocios:
+            try:
+                for c in correos(principal, buzon=buzon, negocios=negocios, solo_de=cual):
+                    # `get` y no `c["id"]`: un correo sin id no puede tumbar la bandeja entera.
+                    # Sin id no se puede deduplicar, asi que pasa: mejor un repetido que perder
+                    # el correo o dejar la pantalla en blanco por un KeyError.
+                    ident = c.get("id")
+                    if ident and ident in vistos:
+                        continue
+                    if ident:
+                        vistos.add(ident)
+                    fuera["correos"].append(c)
+            except google.NoAutorizado as e:
+                fallos.append(f"{buzon} (correos): {e}")
+                break                                     # sin permiso no hay nada que reintentar
+            except Exception as e:                        # noqa: BLE001
+                fallos.append(f"{google.direcciones().get(cual, cual)} (correos): "
+                              f"{type(e).__name__}")
         try:
             fuera["agenda"] += agenda(principal, buzon=buzon)
         except google.NoAutorizado as e:

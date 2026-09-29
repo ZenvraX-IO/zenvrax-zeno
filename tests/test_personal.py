@@ -126,7 +126,10 @@ def test_un_buzon_sin_conectar_se_dice(monkeypatch):
     operador lee "tengo poco correo" cuando la verdad es "falta un buzon entero"."""
     monkeypatch.setattr(google, "CUENTAS", {"zenvrax": "a@zenvrax.com", "otra": "b@otra.com"})
     monkeypatch.setattr(google, "conectadas", lambda: {"zenvrax": {"buzon": "a@zenvrax.com"}})
-    monkeypatch.setattr(personal, "correos", lambda n, **k: [{"asunto": "uno", "negocio": n}])
+    # Con `id`, como lo devuelve Gmail: sin el no se puede deduplicar y el mismo correo saldria
+    # una vez por cada negocio del buzon.
+    monkeypatch.setattr(personal, "correos",
+                        lambda n, **k: [{"id": "m1", "asunto": "uno", "negocio": n}])
     monkeypatch.setattr(personal, "agenda", lambda n, **k: [])
     datos, fallos = personal.bandeja()
     assert len(datos["correos"]) == 1
@@ -152,7 +155,7 @@ def test_un_fallo_de_una_cuenta_no_borra_lo_de_la_otra(monkeypatch):
     def correos(negocio, **k):
         if negocio == "gutlyn":
             raise google.NoAutorizado("permiso retirado")
-        return [{"asunto": "de zenvrax", "negocio": negocio}]
+        return [{"id": "m1", "asunto": "de zenvrax", "negocio": negocio}]
 
     monkeypatch.setattr(personal, "correos", correos)
     monkeypatch.setattr(personal, "agenda", lambda n, **k: [])
@@ -364,11 +367,20 @@ def test_dos_autorizaciones_al_mismo_buzon_no_duplican_el_correo(monkeypatch):
         "zenvrax": {"cuenta": "ghidalgo@zenvrax.com", "buzon": "ghidalgo@zenvrax.com"},
         "gutlyn": {"cuenta": "ghidalgo@gutlyn.com", "buzon": "ghidalgo@zenvrax.com"}})
     leidos = []
+    # DESDE EL 29-sep SE PREGUNTA UNA VEZ POR NEGOCIO, con un filtro distinto cada una, para
+    # que el que recibe poco correo no desaparezca detras del recorte (medido: 50 sin leer en
+    # siete dias y solo UNO de GutLyn). Asi que "una sola lectura" ya no es lo que hay que
+    # comprobar; lo que importa, y es lo que fallo en septiembre, es que no salga DUPLICADO.
+    # El doble devuelve el MISMO correo a las dos llamadas, que es el peor caso posible.
     monkeypatch.setattr(personal, "correos",
-                        lambda n, **k: leidos.append(n) or [{"asunto": "uno", "negocio": n}])
+                        lambda n, **k: leidos.append(k.get("solo_de") or n)
+                        or [{"id": "m1", "asunto": "uno", "negocio": k.get("solo_de") or n}])
     monkeypatch.setattr(personal, "agenda", lambda n, **k: [])
     datos, fallos = personal.bandeja()
-    assert len(leidos) == 1, f"el mismo buzon se ha leido {len(leidos)} veces"
+    # Con DOS buzones de verdad cada uno se lee con SU permiso y solo por lo suyo: el de Zenvrax
+    # no puede preguntar tambien por GutLyn, que tiene el suyo. Exactamente dos lecturas.
+    assert sorted(leidos) == ["gutlyn", "zenvrax"], (
+        f"deberia preguntarse una vez por negocio, y se pregunto por {leidos}")
     assert len(datos["correos"]) == 1, "el correo sale duplicado"
     assert not fallos
     assert "gutlyn" in datos["buzones"][0]["alias_de"], "se dice que gutlyn es un alias"
@@ -380,8 +392,11 @@ def test_dos_buzones_de_verdad_se_siguen_leyendo_los_dos(monkeypatch):
     monkeypatch.setattr(google, "conectadas", lambda: {
         "zenvrax": {"buzon": "a@zenvrax.com"}, "gutlyn": {"buzon": "b@gutlyn.com"}})
     leidos = []
+    # El id lleva el negocio dentro: son DOS buzones distintos, asi que son dos correos
+    # distintos y los dos tienen que salir.
     monkeypatch.setattr(personal, "correos",
-                        lambda n, **k: leidos.append(n) or [{"asunto": n, "negocio": n}])
+                        lambda n, **k: leidos.append(n) or [{"id": "m-" + n, "asunto": n,
+                                                             "negocio": n}])
     monkeypatch.setattr(personal, "agenda", lambda n, **k: [])
     datos, _ = personal.bandeja()
     assert sorted(leidos) == ["gutlyn", "zenvrax"]
