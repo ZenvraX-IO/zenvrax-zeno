@@ -936,11 +936,7 @@ async function haceAccion() {
     // 428 es "falta el PIN", no "sesion mala": se pide el PIN y se reintenta con el MISMO vale.
     if (r.status === 428) {
       b.disabled = false; b.textContent = "Publicar";
-      const pin = prompt("PIN para publicar");
-      if (!pin) return;
-      try {
-        await api("/api/pin", { method: "POST", body: JSON.stringify({ pin }) });
-      } catch (e) { alert(e.message); return; }
+      if (!await abreElPin("PIN para publicar")) return;
       return haceAccion();
     }
     const d = await r.json().catch(() => ({}));
@@ -1775,11 +1771,10 @@ async function mandaConPin(vale) {
     // 428 es "falta el PIN", no "sesion mala": se pide y se reintenta CON EL MISMO VALE. Volver a
     // prepararlo crearia un borrador nuevo en Gmail por cada intento.
     if (r.status === 428) {
-      const pin = prompt("PIN para enviar el correo");
-      if (!pin) { b.disabled = false; b.textContent = "Enviar"; return; }
-      try {
-        await api("/api/pin", { method: "POST", body: JSON.stringify({ pin }) });
-      } catch (e) { b.disabled = false; b.textContent = "Enviar"; alert(e.message); return; }
+      if (!await abreElPin("PIN para enviar el correo")) {
+        b.disabled = false; b.textContent = "Enviar";
+        return;
+      }
       return mandaConPin(vale);
     }
     const d = await r.json().catch(() => ({}));
@@ -1847,10 +1842,7 @@ async function aplicaCambio() {
       body: JSON.stringify({ vale: propuestaViva.vale }) });
     if (r.status === 428) {
       b.disabled = false; b.textContent = antes;
-      const pin = prompt("PIN: esta cita tiene invitados y les va a llegar un correo");
-      if (!pin) return;
-      try { await api("/api/pin", { method: "POST", body: JSON.stringify({ pin }) }); }
-      catch (e) { alert(e.message); return; }
+      if (!await abreElPin("PIN: esta cita tiene invitados y les va a llegar un correo")) return;
       return aplicaCambio();
     }
     const d = await r.json().catch(() => ({}));
@@ -2345,6 +2337,44 @@ async function entrarConCara() {
     e.textContent = err.message || "no he podido entrar con Face ID";
   }
 }
+
+// ABRIR EL PIN CON LA CARA, que es lo que hace que aprobar no sea teclear cuatro cifras.
+//
+// EL ENDPOINT EXISTIA DESDE QUE SE MONTO FACE ID Y LA PANTALLA NO LO LLAMABA. El operador
+// (30-sep), tras pedir el PIN porque no lo recordaba: *"sigo necesitandolo para aprobar"*. Lo
+// necesitaba porque los tres sitios que lo piden saltaban directos al teclado, teniendo el camino
+// de la cara construido y probado en el servidor.
+//
+// NO REBAJA LA BARRERA, y por eso vale: el PIN son cifras que se escriben en la calle y se miran
+// por encima del hombro; esto es biometria comprobada por el chip del telefono. Se exige lo mismo,
+// demostrar otra vez que eres tu antes de lo que no se deshace.
+//
+// SI NO HAY CARA O SE CANCELA, SE TECLEA. Cancelar el Face ID no es un fallo: es cambiar de idea,
+// y lo que toca es dejar el PIN delante, no quedarse sin poder aprobar.
+async function abreElPin(para) {
+  if (hayCara) {
+    try {
+      const opciones = await api("/api/rostro/entrar");
+      const c = await navigator.credentials.get({ publicKey: preparaEntrada(opciones) });
+      await api("/api/rostro/pin", { method: "POST",
+                                     body: JSON.stringify({ respuesta: empaqueta(c) }) });
+      return true;
+    } catch (err) {
+      // Cancelado, sin Face ID en este aparato, o la firma no valio: en los tres casos queda el
+      // teclado. Lo unico que no se hace es dar por abierta la ventana.
+    }
+  }
+  const pin = prompt(para);
+  if (!pin) return false;
+  try {
+    await api("/api/pin", { method: "POST", body: JSON.stringify({ pin }) });
+    return true;
+  } catch (e) {
+    alert(e.message);
+    return false;
+  }
+}
+
 
 async function darDeAltaLaCara() {
   try {
