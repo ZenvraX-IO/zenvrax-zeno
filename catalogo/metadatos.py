@@ -174,10 +174,14 @@ CONTRATOS: dict[str, Contrato] = {
         que_hace="No publica hoy y mueve el post al proximo viernes libre de su cadencia",
         efecto=CAMBIA_ESTADO, reversible=True,
         guarda="no pisa un dia que ya tenga contenido real, mirando las dos fuentes"),
+    # TARDA CASI UN MINUTO Y SE PUEDE PREGUNTAR (30-sep). Medido en la ejecucion real de B08:
+    # 58,6s, de los cuales 57 son la API de Meta (18s publicar en IG, 13s crear el contenedor, 11s
+    # la foto en FB, 8s de espera a que Instagram procese la imagen) y 0,0s todo el trabajo de n8n.
+    # Instagram no deja publicar de una vez: crea contenedor, espera y publica. Por eso `comprobar`.
     "xrise|POST|/content/gutlyn/{pid}/action|action=publish|✅ Aprobar y publicar": Contrato(
         op="gutlyn.aprobar_y_publicar",
         que_hace="Aprueba el post organico de GutLyn y lo publica en Meta",
-        efecto=PUBLICA, reversible=False, guarda="ninguna"),
+        efecto=PUBLICA, reversible=False, guarda="ninguna", comprobar="estado"),
     "xrise|POST|/content/gutlyn/{pid}/action|action=regenerate|\U0001f504 Regenerar": Contrato(
         op="gutlyn.regenerar", que_hace="Pide otro texto para el post organico de GutLyn",
         efecto=CAMBIA_ESTADO, reversible=False, coste_api=True,

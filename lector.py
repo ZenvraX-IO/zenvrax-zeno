@@ -78,6 +78,9 @@ class Accion:
     #: Si se puede deshacer. Viene del catalogo y sube hasta el front porque la VOZ lo necesita:
     #: por voz solo se ejecuta lo que se deshace, y eso no se puede decidir sin este dato.
     reversible: bool = False
+    #: El tramo de ruta que dice SI SE HIZO, cuando el sistema sabe contestarlo. Sube hasta
+    #: el front y vuelve al confirmar, para que un timeout se resuelva preguntando.
+    comprobar: str = ""
     #: Con que verbo y que cuerpo se dispara. Las acciones que solo abren no lo usan.
     metodo: str = "GET"
     cuerpo: dict | None = None
@@ -242,6 +245,7 @@ def _acciones(sistema: str, brutas: list, indice: dict) -> list:
             op=ficha.op if ficha else None,
             efecto=efecto,
             coste_api=bool(ficha and ficha.coste_api),
+            comprobar=(getattr(ficha, "comprobar", "") if ficha else ""),
             url=url,
             reversible=bool(ficha and getattr(ficha, "reversible", False)),
             metodo=metodo,
@@ -456,6 +460,7 @@ def elementos_de_cola(cola: str, limite: int = 25) -> tuple[list[dict], str, dic
             "fuera_de_cupo": bool(e.get("fuera_de_cupo")),
             "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
                           "coste_api": a.coste_api, "url": a.url,
+                          "comprobar": a.comprobar,
                           "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible,
                           "metodo": a.metodo, "cuerpo": a.cuerpo,
                           "se_puede_ejecutar": a.se_puede_ejecutar}

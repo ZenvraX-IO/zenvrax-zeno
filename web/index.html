@@ -270,6 +270,10 @@
              padding:13px;margin-bottom:12px}
   .propuesta .q{font-size:15px;font-weight:600;margin-bottom:4px}
   .propuesta .c{color:#f3c579;font-size:13px;margin-bottom:4px}
+  /* El tic de publicado: verde, porque es lo unico que cierra de verdad una accion que no se
+     deshace. Hasta el 30-sep no habia ninguna señal y habia que ir a mirarlo al sistema. */
+  .propuesta.publicado{background:#12251a;border-color:#2e7d4f}
+  .propuesta.publicado .q{color:#6ee7a0}
   .propuesta .ojo{color:#ffb3aa;font-size:12.5px;margin-bottom:10px}
   .choque{background:#2a1a18;border:1px solid #50302a;border-radius:10px;padding:10px 12px;
           margin-bottom:9px;font-size:13px;color:#ffb3aa;display:block;text-decoration:none}
@@ -882,7 +886,9 @@ async function hazDirecto(pendiente, accion) {
     const pr = await api("/api/accion/proponer", { method: "POST", body: JSON.stringify({
       op: accion.op, etiqueta: accion.etiqueta, url: accion.url, efecto: accion.efecto,
       coste_api: !!accion.coste_api, titulo: pendiente.titulo,
-      metodo: accion.metodo || "GET", cuerpo: accion.cuerpo || null }) });
+      metodo: accion.metodo || "GET", cuerpo: accion.cuerpo || null,
+      // Con esto, un timeout se resuelve PREGUNTANDO al sistema en vez de dudando.
+      comprobar: accion.comprobar || "" }) });
     const d = await api("/api/accion/confirmar", { method: "POST",
                                                    body: JSON.stringify({ vale: pr.vale }) });
     if (!d.hecho) throw new Error(d.detalle || "no ha salido");
@@ -904,7 +910,9 @@ async function proponeAccion(pendiente, accion) {
     const pr = await api("/api/accion/proponer", { method: "POST", body: JSON.stringify({
       op: accion.op, etiqueta: accion.etiqueta, url: accion.url, efecto: accion.efecto,
       coste_api: !!accion.coste_api, titulo: pendiente.titulo,
-      metodo: accion.metodo || "GET", cuerpo: accion.cuerpo || null }) });
+      metodo: accion.metodo || "GET", cuerpo: accion.cuerpo || null,
+      // Con esto, un timeout se resuelve PREGUNTANDO al sistema en vez de dudando.
+      comprobar: accion.comprobar || "" }) });
     accionViva = pr;
     let h = '<div class="propuesta"><div class="q">' + esc(pr.etiqueta) + "</div>" +
             '<div class="c">' + esc(pr.titulo || "") + "</div>";
@@ -924,6 +932,53 @@ async function proponeAccion(pendiente, accion) {
   }
 }
 
+// VIGILAR ALGO QUE ESTA SALIENDO AL MUNDO, sin quedarse mirando.
+//
+// EL CASO (2026-09-30). Publicar un post de GutLyn tarda 58,6s medidos y casi todo es Meta:
+// Instagram no deja publicar de una vez, obliga a crear un contenedor, esperar a que procese la
+// imagen y solo entonces publicar. Zeno esperaba 45s con la pantalla parada y acababa diciendo
+// "no se ha podido saber si salio: comprueba en el sistema antes de repetirlo". Habia salido.
+// El operador: *"tarda mucho en aprobarse y no existe un thick que lo muestre como publicado...
+// se debe comprobar in situ y es algo a evitar"*.
+//
+// El minuto de Meta no se puede quitar. Lo que si se puede es no cobrarselo a quien mira.
+async function vigilaEncargo(encargo, caja) {
+  const HASTA = Date.now() + 5 * 60 * 1000;   // mas que de sobra para lo que tarda Meta
+  while (Date.now() < HASTA) {
+    await new Promise(r => setTimeout(r, 3000));
+    let e;
+    try {
+      e = await api("/api/accion/encargo/" + encodeURIComponent(encargo));
+    } catch (err) {
+      // El encargo se perdio (un reinicio de Zeno). NO se inventa que salio ni que fallo: se
+      // manda a la lista, que se lee del sistema y dice la verdad.
+      caja.innerHTML = '<div class="aviso-fallo">' + esc(err.message) + "</div>";
+      cargaPendientes();
+      return;
+    }
+    if (e.estado === "en_marcha") continue;
+
+    if (e.estado === "hecho") {
+      const enlaces = Object.entries(e.enlaces || {}).map(([k, u]) =>
+        '<a class="b sin" href="' + esc(u) + '" target="_blank" rel="noopener">Ver en ' +
+        (k === "ig_url" ? "Instagram" : "Facebook") + "</a>").join(" ");
+      caja.innerHTML = '<div class="propuesta publicado"><div class="q">✅ Publicado</div>' +
+        '<div class="c">' + esc(e.titulo || "") + "</div>" +
+        (enlaces ? '<div class="btns">' + enlaces + "</div>" : "") + "</div>";
+    } else {
+      // Ni "hecho" ni silencio: lo que no se sabe se dice, y se dice que NO se repita.
+      caja.innerHTML = '<div class="aviso-fallo">' + esc(e.mensaje || "no ha salido") + "</div>";
+    }
+    // Se recarga LO QUE SE ESTA MIRANDO, igual que al hacer la accion.
+    if (colaAbierta && !$("#capa-cola").hidden) abreCola(colaAbierta.cola, colaAbierta.titulo);
+    else cargaPendientes();
+    return;
+  }
+  caja.innerHTML = '<div class="aviso-fallo">Sigue en marcha tras cinco minutos. ' +
+                   'NO lo repitas: mira la lista dentro de un rato.</div>';
+}
+
+
 async function haceAccion() {
   if (!accionViva) return;
   const b = $("#hacer-ya");
@@ -942,10 +997,21 @@ async function haceAccion() {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.detail || ("error " + r.status));
     accionViva = null;
-    dondeConfirmar().innerHTML =
+    const caja = dondeConfirmar();
+
+    // LO QUE PUBLICA VUELVE AL INSTANTE Y SIGUE SOLO. Meta tarda casi un minuto y quedarse
+    // mirando no lo acorta: se enseña que esta en marcha y Zeno avisa cuando termina.
+    if (d.en_marcha) {
+      caja.innerHTML = '<div class="propuesta"><div class="q">Publicando en Instagram y ' +
+        'Facebook</div><div class="c">' + esc(d.titulo || "") + "</div>" +
+        '<div class="ojo">Tarda cerca de un minuto (lo marca Meta). Puedes seguir a lo tuyo: ' +
+        "te aviso aquí en cuanto salga.</div></div>";
+      return vigilaEncargo(d.encargo, caja);
+    }
+
+    caja.innerHTML =
       '<div class="propuesta"><div class="q">Hecho: ' + esc(d.etiqueta) + "</div>" +
-      '<div class="c">' + esc(d.titulo || "") + (d.salio_al_mundo ? " · ya está publicado" : "") +
-      "</div></div>";
+      '<div class="c">' + esc(d.titulo || "") + "</div></div>";
     // Se recarga LO QUE SE ESTA MIRANDO. Si hay una cola abierta, esa: recargar la pantalla de
     // debajo dejaba la tarjeta ahi y parecia que el boton no habia hecho nada.
     if (colaAbierta && !$("#capa-cola").hidden) abreCola(colaAbierta.cola, colaAbierta.titulo);

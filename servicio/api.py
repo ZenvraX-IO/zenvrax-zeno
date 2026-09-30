@@ -245,6 +245,7 @@ async def pendientes(authorization: str = Header(default="")):
             # la primera vez que lo uso.
             "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
                           "coste_api": a.coste_api, "url": a.url,
+                          "comprobar": a.comprobar,
                           "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible,
                           "metodo": a.metodo, "cuerpo": a.cuerpo,
                           "se_puede_ejecutar": a.se_puede_ejecutar}
@@ -429,7 +430,9 @@ class AccionPropuesta(BaseModel):
     #: catalogo: cambiar el valor por defecto las habria roto todas de golpe.
     metodo: str = "GET"
     cuerpo: dict | None = None
-
+    #: El tramo de ruta que dice SI SE HIZO, cuando el sistema sabe contestarlo. Viaja
+    #: desde el catalogo para que un timeout se resuelva preguntando en vez de dudando.
+    comprobar: str = ""
 
 class Pin(BaseModel):
     pin: str
@@ -498,6 +501,7 @@ async def api_orden(body: Dicho, authorization: str = Header(default="")):
     cosas = [{"titulo": p.titulo,
               "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
                             "coste_api": a.coste_api, "url": a.url,
+                          "comprobar": a.comprobar,
                             "reversible": a.reversible} for a in p.acciones]}
              for p in lista] + avisos_sueltos
     r = ordenes.empareja(body.frase, cosas)
@@ -518,7 +522,8 @@ async def api_orden(body: Dicho, authorization: str = Header(default="")):
     try:
         vale = ejecutor.propone(a.get("op"), a.get("etiqueta"), a.get("url"), a.get("efecto"),
                                 bool(a.get("coste_api")), cosa.get("titulo", ""),
-                                a.get("metodo", "GET"), a.get("cuerpo"))
+                                a.get("metodo", "GET"), a.get("cuerpo"),
+                                a.get("comprobar", ""))
     except ejecutor.NoSePuede as e:
         return {"estado": "no_se_puede", "decir": str(e)}
     return {"estado": "vale", "vale": vale["vale"],
@@ -534,7 +539,8 @@ async def accion_proponer(body: AccionPropuesta, authorization: str = Header(def
     _quien(authorization)
     try:
         return ejecutor.propone(body.op, body.etiqueta, body.url, body.efecto,
-                                body.coste_api, body.titulo, body.metodo, body.cuerpo)
+                                body.coste_api, body.titulo, body.metodo, body.cuerpo,
+                                body.comprobar)
     except ejecutor.NoSePuede as e:
         raise HTTPException(422, str(e)) from e
 
@@ -551,6 +557,27 @@ async def accion_confirmar(body: ValeDeAccion, authorization: str = Header(defau
         raise HTTPException(428, str(e)) from e
     except ejecutor.NoSePuede as e:
         raise HTTPException(409, str(e)) from e
+
+
+@app.get("/api/accion/encargo/{encargo}")
+async def accion_encargo(encargo: str, authorization: str = Header(default="")):
+    """Como va algo que esta saliendo al mundo ahora mismo.
+
+    EL CASO (2026-09-30). Publicar un post de GutLyn tarda 58,6s medidos y casi todo es Meta:
+    Instagram obliga a crear un contenedor, esperar a que procese la imagen y solo entonces
+    publicar. Zeno esperaba 45s con la pantalla parada y acababa diciendo *"no se ha podido saber
+    si salio: comprueba en el sistema antes de repetirlo"*. Habia salido. El operador: *"tarda
+    mucho en aprobarse y no existe un thick que lo muestre como publicado... se debe comprobar in
+    situ y es algo a evitar"*.
+
+    Ahora publicar devuelve al instante un encargo y la pantalla pregunta aqui. El minuto de Meta
+    sigue, pero no se lo come quien mira, y el resultado llega con su tic y su enlace al post.
+    """
+    _quien(authorization)
+    try:
+        return ejecutor.como_va(encargo)
+    except ejecutor.NoSePuede as e:
+        raise HTTPException(404, str(e)) from e
 
 
 @app.get("/api/hecho")

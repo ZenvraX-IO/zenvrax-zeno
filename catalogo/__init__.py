@@ -45,6 +45,11 @@ class Accion:
     cuerpo: dict
     etiqueta: str
     linea: int
+    #: El tramo de ruta que dice SI SE HIZO. Vacio = ese sistema no sabe contestarlo.
+    #: VA AL FINAL Y CON DEFECTO a proposito: el contenedor arranca del catalogo CONGELADO,
+    #: y un congelado escrito antes de que este campo existiera tiene que seguir cargando.
+    #: Un campo nuevo no puede dejar a Zeno sin catalogo.
+    comprobar: str = ""
 
     @property
     def muta(self) -> bool:
@@ -91,7 +96,8 @@ def catalogo(sistemas=None) -> list[Accion]:
             continue
         fuera.append(Accion(
             op=c.op, que_hace=c.que_hace, sistema=accion["sistema"], efecto=c.efecto,
-            reversible=c.reversible, coste_api=c.coste_api, confirmar=c.confirmar, guarda=c.guarda,
+            reversible=c.reversible, coste_api=c.coste_api, confirmar=c.confirmar,
+            guarda=c.guarda, comprobar=getattr(c, "comprobar", ""),
             verbo=accion["verbo"], destino=accion["destino"], cuerpo=accion["cuerpo"] or {},
             etiqueta=accion["etiqueta"], linea=accion["linea"]))
     if faltan:

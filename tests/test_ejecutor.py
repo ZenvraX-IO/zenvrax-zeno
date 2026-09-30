@@ -172,6 +172,24 @@ def test_cambiar_un_estado_no_pide_pin(monkeypatch):
 
 
 # ---------------------------------------------------------------- cuando no se sabe, se dice
+#
+# LO QUE PUBLICA YA NO BLOQUEA (2026-09-30). Publicar tarda 58,6s medidos y casi todo es Meta, asi
+# que `confirma` arranca la publicacion en segundo plano y devuelve un encargo. El resultado, que
+# antes venia como excepcion, ahora se lee preguntando por ese encargo. Las garantias son las
+# mismas y se comprueban igual de fuerte; cambia donde se mira.
+
+
+def _acaba(encargo, tope=5.0):
+    """Espera a que el hilo cierre el encargo y devuelve como quedo."""
+    import time as _t
+    limite = _t.time() + tope
+    while _t.time() < limite:
+        r = ejecutor.como_va(encargo)
+        if r["estado"] != "en_marcha":
+            return r
+        _t.sleep(0.02)
+    raise AssertionError(f"el encargo {encargo} se ha quedado en marcha mas de {tope}s")
+
 
 def test_un_timeout_no_dice_que_no_se_hizo(monkeypatch):
     """EL FALLO SUTIL. Un timeout despues de mandar la peticion puede significar que el post YA
@@ -181,11 +199,9 @@ def test_un_timeout_no_dice_que_no_se_hizo(monkeypatch):
         raise TimeoutError("se acabo el tiempo")
     monkeypatch.setattr(ejecutor.urllib.request, "urlopen", cuelga)
     v = ejecutor.propone("a", "Aprobar", APROBAR, ejecutor.PUBLICA)["vale"]
-    with pytest.raises(ejecutor.NoSePuede) as e:
-        ejecutor.confirma(v, pin_abierto=True)
-    mensaje = str(e.value)
-    assert "no se ha podido saber" in mensaje
-    assert "comprueba" in mensaje, "y dice que hay que mirarlo antes de repetir"
+    r = _acaba(ejecutor.confirma(v, pin_abierto=True)["encargo"])
+    assert r["estado"] == "no_se_sabe", "un timeout no puede leerse como que no se hizo"
+    assert "NO lo repitas" in r["mensaje"], "repetir publicaria dos veces"
 
 
 def test_un_error_del_sistema_se_dice_con_su_codigo(monkeypatch):
@@ -194,9 +210,8 @@ def test_un_error_del_sistema_se_dice_con_su_codigo(monkeypatch):
         raise urllib.error.HTTPError(APROBAR, 500, "boom", {}, None)
     monkeypatch.setattr(ejecutor.urllib.request, "urlopen", falla)
     v = ejecutor.propone("a", "Aprobar", APROBAR, ejecutor.PUBLICA)["vale"]
-    with pytest.raises(ejecutor.NoSePuede) as e:
-        ejecutor.confirma(v, pin_abierto=True)
-    assert "500" in str(e.value)
+    r = _acaba(ejecutor.confirma(v, pin_abierto=True)["encargo"])
+    assert r["estado"] == "error" and "500" in r["mensaje"]
 
 
 def test_no_hay_ninguna_forma_de_ejecutar_en_lote():
@@ -233,21 +248,26 @@ def test_lo_que_no_se_sabe_TAMBIEN_queda_apuntado(monkeypatch):
         raise TimeoutError("boom")
     monkeypatch.setattr(ejecutor.urllib.request, "urlopen", cuelga)
     v = ejecutor.propone("a", "Aprobar", APROBAR, ejecutor.PUBLICA)["vale"]
-    with pytest.raises(ejecutor.NoSePuede):
-        ejecutor.confirma(v, pin_abierto=True)
+    _acaba(ejecutor.confirma(v, pin_abierto=True)["encargo"])
     assert apuntes[0]["resultado"] == "no_se_sabe"
 
 
 def test_un_diario_roto_no_tumba_una_accion_ya_hecha(monkeypatch):
     """Si apuntar reventara DESPUES de publicar, el operador veria un error y creeria que no salio,
-    cuando si salio. Eso lleva a reintentar, o sea a publicar dos veces."""
+    cuando si salio. Eso lleva a reintentar, o sea a publicar dos veces.
+
+    ANTES ESTE TEST SE CONTRADECIA CON SU PROPIO NOMBRE: decia "no tumba" y comprobaba que la
+    excepcion SALIA (`pytest.raises(OSError)`), que es justo el fallo que describe. Pasaba porque
+    el enunciado y el assert nunca se compararon. Ahora la accion se resuelve en su hilo y aqui se
+    comprueba lo que el nombre promete: el disco lleno NO convierte en error algo que ya salio.
+    """
     def revienta(_):
         raise OSError("disco lleno")
     monkeypatch.setattr(ejecutor.diario, "apunta", revienta)
     _sale_bien(monkeypatch, [])
     v = ejecutor.propone("a", "Aprobar", APROBAR, ejecutor.PUBLICA)["vale"]
-    with pytest.raises(OSError):
-        ejecutor.confirma(v, pin_abierto=True)
+    r = _acaba(ejecutor.confirma(v, pin_abierto=True)["encargo"])
+    assert r["estado"] == "hecho", "el disco lleno ha convertido en error algo que SI salio"
 
 
 def test_el_diario_aguanta_una_linea_rota(monkeypatch, tmp_path):
