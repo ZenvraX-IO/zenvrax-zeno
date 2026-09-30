@@ -582,7 +582,19 @@ def test_la_pantalla_de_hoy_sale_aunque_el_resumen_falle(monkeypatch):
     d = cliente.get("/api/hoy", headers=CABECERA).json()
     assert d["plan"]["foco"]["titulo"] == "Responder a Era Emre"
     assert d["resumen"] is None
-    assert any("resumen" in f for f in d["fallos"]), "y se dice que falta, no se calla"
+
+    # EL TEXTO SE ESCRIBE POR DETRAS desde el 30-sep (cuesta 3,4s medidos y no puede retrasar la
+    # pantalla), asi que el fallo ya no llega en esta respuesta: llega a quien pregunta POR EL
+    # RESUMEN. Lo que no cambia es que NO se calla, que es lo que este test defiende.
+    import time as _t
+    for _ in range(100):
+        r = cliente.get("/api/hoy/resumen", headers=CABECERA).json()
+        if r["fallos"]:
+            break
+        _t.sleep(0.02)
+    assert r["resumen"] is None
+    assert any("resumen" in f for f in r["fallos"]), "y se dice que falta, no se calla"
+    assert r["en_camino"] is False, "dice que sigue escribiendose cuando ya fallo"
 
 
 def test_sin_el_chat_encendido_la_pantalla_no_gasta_nada(monkeypatch):

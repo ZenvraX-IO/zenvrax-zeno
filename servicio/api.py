@@ -18,6 +18,10 @@ el propio cockpit tuvo en agosto de 2026 y por el que allí también devuelve 50
 """
 from __future__ import annotations
 
+import threading
+
+import asyncio
+
 import os
 import secrets
 import sys
@@ -313,37 +317,112 @@ async def api_hoy(narrar: bool = Query(default=True), authorization: str = Heade
     Si el resumen falla, la pantalla sale igual con sus datos: el texto es el adorno, no la pieza.
     """
     _quien(authorization)
-    plan, f1 = lector.plan_del_dia()
-    lo_torcido, f2 = lector.alertas()
-    negocios, f3 = lector.negocios()
-    fallos = f1 + f2 + f3
 
-    # Lo personal entra en el contexto del resumen aunque no se pinte aqui: una cita a las 10 cambia
-    # que es lo primero del dia, y sin saberlo el resumen propone algo imposible.
-    personales = ""
-    try:
-        datos, fp = personal.bandeja()
-        hoy = [c for c in datos["agenda"]][:4]
-        salto = chr(10)
-        if hoy:
-            personales = "TU AGENDA:" + salto + salto.join(
-                f"  - {c['cuando'][:16]} {c['titulo']}" for c in hoy)
-        if datos["correos"]:
-            personales += salto + f"Correo sin leer: {len(datos['correos'])}"
-        fallos += fp
-    except Exception as e:                                # noqa: BLE001
-        fallos.append(f"tu agenda: {type(e).__name__}")
+    # LAS CUATRO LECTURAS A LA VEZ, no una detras de otra (2026-09-30). Medidas ese dia: 0,5 + 0,2
+    # + 0,7 + 0,7 = 2,1s en fila, cuando son cuatro sistemas distintos que no se esperan entre
+    # ellos. A la vez manda la mas lenta, que son 0,7s. El operador: *"¿se puede de alguna manera
+    # rebajar la latencia y que en el momento de la carga no tarde tantos segundos?"*.
+    #
+    # `to_thread` porque el lector usa urllib, que es sincrono: sin esto, "a la vez" seria mentira
+    # y las cuatro seguirian yendo en fila dentro del mismo hilo.
+    plan_r, torcido_r, negocios_r, personal_r = await asyncio.gather(
+        asyncio.to_thread(lector.plan_del_dia),
+        asyncio.to_thread(lector.alertas),
+        asyncio.to_thread(lector.negocios),
+        asyncio.to_thread(_lo_personal_para_el_resumen),
+        return_exceptions=True,
+    )
 
-    fuera = {"plan": plan, "avisos": lo_torcido, "fallos": fallos, "resumen": None}
+    def _saca(r, vacio):
+        """Una lectura caida NO tumba la pantalla: se devuelve lo que hay y se dice lo que falta."""
+        if isinstance(r, BaseException):
+            return vacio, [f"no se ha podido leer ({type(r).__name__})"]
+        return r
+
+    plan, f1 = _saca(plan_r, [])
+    lo_torcido, f2 = _saca(torcido_r, [])
+    negocios, f3 = _saca(negocios_r, [])
+    personales, f4 = _saca(personal_r, "")
+    fallos = list(f1) + list(f2) + list(f3) + list(f4)
+
+    fuera = {"plan": plan, "avisos": lo_torcido, "fallos": fallos, "resumen": None,
+             "resumen_en_camino": False}
     if narrar and CHAT_ACTIVO:
-        try:
-            fuera["resumen"] = chat_mod.resumen_de_la_manana(
-                _contexto_de_hoy(plan, lo_torcido, negocios, personales))
-        except (chat_mod.TopeAlcanzado, chat_mod.SinClaveDeIA) as e:
-            fuera["fallos"].append(str(e))
-        except Exception as e:                            # noqa: BLE001
-            fuera["fallos"].append(f"el resumen escrito: {type(e).__name__}")
+        # EL TEXTO NO BLOQUEA LA PANTALLA. Cuesta 3,4s medidos la primera vez del dia, y es el
+        # adorno: lo que se decide son los datos. Si ya esta hecho va aqui mismo; si no, se pone a
+        # escribirlo por detras y la pantalla lo recoge cuando este.
+        ya = chat_mod.resumen_ya_hecho()
+        if ya:
+            fuera["resumen"] = {**ya, "de_cache": True}
+        else:
+            fuera["resumen_en_camino"] = True
+            _arranca_el_resumen(plan, lo_torcido, negocios, personales)
     return fuera
+
+
+def _lo_personal_para_el_resumen():
+    """La agenda y el correo, resumidos para el contexto del texto de la mañana.
+
+    Entra aunque no se pinte aqui: una cita a las 10 cambia que es lo primero del dia, y sin
+    saberlo el resumen propone algo imposible.
+    """
+    datos, fallos = personal.bandeja()
+    salto = chr(10)
+    texto = ""
+    hoy = [c for c in datos["agenda"]][:4]
+    if hoy:
+        texto = "TU AGENDA:" + salto + salto.join(
+            f"  - {c['cuando'][:16]} {c['titulo']}" for c in hoy)
+    if datos["correos"]:
+        texto += salto + f"Correo sin leer: {len(datos['correos'])}"
+    return texto, fallos
+
+
+#: Para no poner a escribir DOS resumenes a la vez si la pantalla se recarga mientras se escribe el
+#: primero. Cada uno cuesta una llamada de pago.
+_ESCRIBIENDO = threading.Lock()
+#: Por que no se pudo escribir el ultimo. SE GUARDA porque ahora el texto se escribe por detras:
+#: si el fallo no quedara en ningun sitio, una caida de Anthropic seria un hueco mudo en la
+#: pantalla. El test que cubre esto existia desde el principio y exigia que NO se callara.
+_FALLO_RESUMEN: dict = {}
+
+
+def _arranca_el_resumen(plan, lo_torcido, negocios, personales) -> None:
+    """Pone a escribir el resumen por detras. No espera, y no se queja si no sale."""
+    if not _ESCRIBIENDO.acquire(blocking=False):
+        return                            # ya se esta escribiendo: no se pide dos veces
+    contexto = _contexto_de_hoy(plan, lo_torcido, negocios, personales)
+
+    def escribe():
+        try:
+            chat_mod.resumen_de_la_manana(contexto)
+            _FALLO_RESUMEN.pop("por_que", None)
+        except (chat_mod.TopeAlcanzado, chat_mod.SinClaveDeIA) as e:
+            _FALLO_RESUMEN["por_que"] = str(e)
+        except Exception as e:                            # noqa: BLE001
+            # El texto es el adorno y la pantalla ya salio, pero el motivo NO se tira: se dice a
+            # quien pregunte por el resumen.
+            _FALLO_RESUMEN["por_que"] = f"el resumen escrito: {type(e).__name__}"
+        finally:
+            _ESCRIBIENDO.release()
+
+    threading.Thread(target=escribe, daemon=True, name="zeno-resumen").start()
+
+
+@app.get("/api/hoy/resumen")
+async def api_hoy_resumen(authorization: str = Header(default="")):
+    """El texto de la mañana, cuando este. La pantalla lo pide aparte para no esperarlo.
+
+    Contesta al instante en los dos casos: con el texto si ya esta escrito, o diciendo que sigue
+    en camino. Nunca se queda esperando al modelo.
+    """
+    _quien(authorization)
+    ya = chat_mod.resumen_ya_hecho()
+    if ya:
+        return {"resumen": {**ya, "de_cache": True}, "en_camino": False, "fallos": []}
+    por_que = _FALLO_RESUMEN.get("por_que")
+    return {"resumen": None, "en_camino": _ESCRIBIENDO.locked() and not por_que,
+            "fallos": [por_que] if por_que else []}
 
 
 # ---------------------------------------------------------------- los avisos al movil

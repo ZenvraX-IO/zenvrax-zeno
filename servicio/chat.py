@@ -22,6 +22,7 @@ es exactamente lo que ya pasó en este ecosistema en agosto.
 from __future__ import annotations
 
 import json
+import pathlib
 import os
 import re
 import urllib.error
@@ -352,14 +353,43 @@ SISTEMA_MANANA = (
 #: El resumen se calcula UNA vez al dia y se guarda. Abrir la aplicacion diez veces no puede costar
 #: diez llamadas: el operador la abre desde el movil varias veces cada mañana, y eso multiplicaria
 #: el gasto por nada, porque el contenido apenas cambia en una hora.
+#: El resumen de la mañana, cacheado POR DIA. EN DISCO, y no solo en memoria (2026-09-30).
+#:
+#: Medido ese dia: la primera llamada tarda 4,7s (paga a Haiku) y las siguientes 2,0s. Con la
+#: cache solo en memoria, CADA despliegue la borraba y volvia a cobrar los 4,7s y una llamada de
+#: pago. Ese dia Zeno se reinicio tres veces. El diario ya vivia en /datos por la misma razon:
+#: guardar en memoria lo que tiene que durar era el fallo que el operador notaba sin saber por que.
+_CACHE = pathlib.Path(os.environ.get("ZENO_CACHE_RESUMEN", "/datos/resumen_manana.json"))
 _RESUMEN: dict[str, dict] = {}
+
+
+def _lee_cache() -> dict:
+    """Lo guardado, o vacio. Un fichero roto NO puede tumbar la pantalla de la mañana."""
+    global _RESUMEN
+    if _RESUMEN:
+        return _RESUMEN
+    try:
+        _RESUMEN = json.loads(_CACHE.read_text(encoding="utf-8"))
+    except Exception:                                    # noqa: BLE001
+        _RESUMEN = {}
+    return _RESUMEN
+
+
+def _guarda_cache() -> None:
+    """Si no se puede escribir, se sigue: la cache es una comodidad, no la pieza."""
+    try:
+        _CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _CACHE.write_text(json.dumps(_RESUMEN), encoding="utf-8")
+    except Exception:                                    # noqa: BLE001
+        pass
 
 
 def resumen_de_la_manana(contexto: str, rehacer: bool = False) -> dict:
     """Tres lineas sobre el dia. Cacheadas por dia; `rehacer` fuerza una nueva."""
     hoy = _hoy()
-    if not rehacer and hoy in _RESUMEN:
-        return {**_RESUMEN[hoy], "de_cache": True}
+    guardado = _lee_cache()
+    if not rehacer and hoy in guardado:
+        return {**guardado[hoy], "de_cache": True}
     if not CLAVE_ANTHROPIC:
         raise SinClaveDeIA("no hay clave de Anthropic configurada")
     hechas = preguntas_hoy()
@@ -387,7 +417,17 @@ def resumen_de_la_manana(contexto: str, rehacer: bool = False) -> dict:
     texto = "".join(b.get("text", "") for b in datos.get("content", []) if b.get("type") == "text")
     _RESUMEN.clear()                      # solo se guarda el de hoy: el de ayer no sirve para nada
     _RESUMEN[hoy] = {"texto": _limpia(texto), "coste_usd": round(coste, 6), "modelo": MODELO}
+    _guarda_cache()
     return {**_RESUMEN[hoy], "de_cache": False}
+
+
+def resumen_ya_hecho() -> dict | None:
+    """El resumen de hoy SI ya esta, sin llamar al modelo ni esperar. None si todavia no.
+
+    Con esto la pantalla de la mañana puede salir sin esperar a Haiku: los datos van solos y el
+    texto se pide aparte, que es un adorno y no tiene por que retrasar lo que se decide.
+    """
+    return _lee_cache().get(_hoy())
 
 
 # ---------------------------------------------------------------- redactar una respuesta

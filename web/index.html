@@ -588,9 +588,13 @@ async function comprobarCodigo() {
 
 function dentro(t) {
   token = t; guarda.poner(t);
-  cargaColasAbribles().then(() => { if (!$("#v-trabajo").hidden) cargaPendientes(); });
+  // PRIMERO SE ENSEÑA, DESPUES SE PIDE. Lo de antes era al reves y por eso se notaba la espera:
+  // hasta que no volvia `/api/colas` no aparecia nada, ni siquiera el armazon de la pantalla.
   $("#pantalla-login").hidden = true; $("#app").hidden = false;
   ver("hoy");
+  // Las colas abribles van por detras: cuando lleguen, los botones ya saben si abrirse. Y solo se
+  // recarga Trabajo si es lo que se esta mirando, que si no es pedir dos veces la misma lista.
+  cargaColasAbribles().then(() => { if (!$("#v-trabajo").hidden) cargaPendientes(); });
   ofreceLaCara();
 }
 
@@ -1245,6 +1249,36 @@ function cuando(marca) {
 // El resumen escrito se cachea POR DIA en el servidor, asi que abrir la aplicacion varias veces por
 // la mañana cuesta una sola llamada.
 
+function pintaResumen(r) {
+  return '<div class="resumen-ia">' + esc(r.texto) +
+         '<span class="firma">Zeno, con ' + esc(r.modelo) +
+         (r.de_cache ? " · escrito hoy" :
+          " · " + (r.coste_usd || 0).toFixed(4) + " USD") + "</span></div>";
+}
+
+
+// Recoge el texto de la mañana cuando termine de escribirse, sin que nadie espere por el.
+async function esperaElResumen() {
+  const HASTA = Date.now() + 90 * 1000;
+  while (Date.now() < HASTA) {
+    await new Promise(r => setTimeout(r, 2500));
+    const hueco = $("#resumen-hueco");
+    if (!hueco) return;                 // se ha cambiado de pantalla: no se insiste
+    let d;
+    try { d = await api("/api/hoy/resumen"); } catch { return; }
+    if (d.resumen) { hueco.outerHTML = pintaResumen(d.resumen); return; }
+    if (d.fallos && d.fallos.length) {
+      // Que falte el texto se DICE. Callarlo dejaria un hueco mudo y parecia que aun se escribe.
+      hueco.outerHTML = '<div class="aviso-fallo">' + esc(d.fallos[0]) + "</div>";
+      return;
+    }
+    if (!d.en_camino) { hueco.remove(); return; }
+  }
+  const h = $("#resumen-hueco");
+  if (h) h.remove();
+}
+
+
 async function cargaHoy() {
   const c = $("#v-hoy");
   if (!c.innerHTML) c.innerHTML = '<div class="cargando">cargando…</div>';
@@ -1253,11 +1287,12 @@ async function cargaHoy() {
     let h = "";
     for (const f of d.fallos || []) h += '<div class="aviso-fallo">' + esc(f) + "</div>";
 
-    if (d.resumen)
-      h += '<div class="resumen-ia">' + esc(d.resumen.texto) +
-           '<span class="firma">Zeno, con ' + esc(d.resumen.modelo) +
-           (d.resumen.de_cache ? " · escrito hoy" :
-            " · " + (d.resumen.coste_usd || 0).toFixed(4) + " USD") + "</span></div>";
+    if (d.resumen) h += pintaResumen(d.resumen);
+    // EL TEXTO DE LA MAÑANA NO RETRASA LA PANTALLA. Cuesta 3,4s medidos la primera vez del dia
+    // (una llamada a Haiku) y es el adorno: lo que se decide son el foco y lo urgente. Si todavia
+    // se esta escribiendo se deja su hueco y se recoge cuando este.
+    else if (d.resumen_en_camino) h += '<div class="resumen-ia" id="resumen-hueco">' +
+        '<span class="firma">escribiendo el resumen del día…</span></div>';
 
     const plan = d.plan || {};
     if (plan.foco) {
@@ -1302,6 +1337,9 @@ async function cargaHoy() {
 
     c.innerHTML = h + '<div id="caja-avisos"></div>';
     pintaAvisos();
+    // Y si el texto de la mañana se esta escribiendo, se recoge cuando este. Sin esto la pieza
+    // estaria escrita y nadie la llamaria, que es el hueco que quedaria mudo para siempre.
+    if (d.resumen_en_camino) esperaElResumen();
   } catch (e) {
     c.innerHTML = '<div class="aviso-fallo">' + esc(e.message) + "</div>";
   }
@@ -2751,7 +2789,12 @@ document.querySelectorAll("[data-cerrar]").forEach(b =>
   b.onclick = () => { $("#" + b.dataset.cerrar).hidden = true; });
 
 // Si ya había sesión, se entra directo. Si el token ya no vale, `api` hace salir() solo.
-if (token) { cargaColasAbribles().then(() => dentro(token)); }
+// LA APLICACION APARECE YA (2026-09-30). Aqui se esperaba a `/api/colas` para ENTRAR, y luego
+// `dentro()` volvia a pedirlo: dos veces lo mismo, y la pantalla en blanco mientras tanto. Que
+// colas se pueden abrir no hace falta para pintar nada, solo para que un boton sepa si abrirse.
+// El operador: *"¿se puede rebajar la latencia y que en el momento de la carga no tarde tantos
+// segundos?"*.
+if (token) dentro(token);
 </script>
 </body>
 </html>
