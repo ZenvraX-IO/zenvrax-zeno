@@ -49,9 +49,17 @@ CASAS = tuple(x.strip() for x in os.environ.get(
 #: LA CLAVE DE ESCRITURA, y a QUIEN se le manda. Solo viaja a las direcciones de la API de casa:
 #: mandarla en cada peticion la entregaria tambien a n8n, que es otro sistema y no la necesita.
 #: Una credencial se manda a quien tiene que recibirla, no a todo el que aparezca en una url.
+#: VAN LOS DOS SISTEMAS, y Xrise faltaba. El 30-sep el operador pulso Publicar en un post de
+#: GutLyn y se llevo un 401: la puerta de Xrise permitia `publish` desde el 28-sep, pero esta lista
+#: solo nombraba al cockpit, asi que la llamada salia sin cabecera. Ninguna accion de GutLyn habia
+#: funcionado nunca, y no se noto porque las del cockpit si. Lo guarda
+#: tests/test_la_clave_llega_a_todos_los_sistemas.py, que lo deriva de los ZENO_*_URL del compose
+#: en vez de repetir la lista a mano.
 CLAVE_ESCRITURA = os.environ.get("ZENO_WRITE_KEY", "")
 CON_CLAVE = tuple(x.strip() for x in os.environ.get(
-    "ZENO_CON_CLAVE", "http://cockpit-api:8802/,https://cockpit.zenvrax.com/api/"
+    "ZENO_CON_CLAVE",
+    "http://cockpit-api:8802/,https://cockpit.zenvrax.com/api/,"
+    "http://ecomops-api:8803/,https://xrise.zenvrax.com/api/"
 ).split(",") if x.strip())
 
 _VALES: dict[str, dict] = {}

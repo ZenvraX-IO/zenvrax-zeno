@@ -91,7 +91,10 @@ services:
       # A quien se le manda la clave de escritura, que NO es lo mismo que a quien se puede llamar:
       # n8n es de casa y no la necesita. Vacio, el ejecutor no se la manda a nadie y el cockpit
       # contesta 401.
-      ZENO_CON_CLAVE: ${ZENO_CON_CLAVE:-http://cockpit-api:8802/,https://cockpit.zenvrax.com/api/}
+      # VAN LOS DOS SISTEMAS. Aqui faltaba Xrise, y el 30-sep publicar un post de GutLyn dio 401:
+      # la puerta de Xrise lo permitia desde el 28-sep y la llave nunca salia. Es el MISMO fallo
+      # que cuenta el comentario de ZENO_CASAS tres lineas arriba, en la lista de al lado.
+      ZENO_CON_CLAVE: ${ZENO_CON_CLAVE:-http://cockpit-api:8802/,https://cockpit.zenvrax.com/api/,http://ecomops-api:8803/,https://xrise.zenvrax.com/api/}
       # Tiene que coincidir CARACTER A CARACTER con el URI de redireccion del cliente en Google.
       ZENO_URL_PUBLICA: ${ZENO_URL_PUBLICA:-https://zeno.zenvrax.com}
     volumes:
