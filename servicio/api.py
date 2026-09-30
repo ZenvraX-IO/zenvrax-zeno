@@ -580,6 +580,59 @@ async def accion_encargo(encargo: str, authorization: str = Header(default="")):
         raise HTTPException(404, str(e)) from e
 
 
+#: Cual manda cuando la misma cosa se intento varias veces. Un intento con exito BORRA los fallos
+#: anteriores: si el post acabo publicado, el dia no tiene un error, tiene una publicacion.
+_MANDA = {"hecho": 3, "no_se_sabe": 2, "error": 1}
+
+
+def _una_linea_por_cosa(apuntes: list[dict]) -> list[dict]:
+    """Agrupa los intentos de UNA misma cosa en una linea, con el desenlace de verdad.
+
+    EL CASO (2026-09-30). El operador: *"existen duplicados en Zeno. No deberia ser de esa manera"*.
+    Medido, su historico de ese dia:
+
+        Aprobar y publicar | W5/P16 D35 - Loading: skip it | no_se_sabe
+        Aprobar y publicar | W5/P16 D35 - Loading: skip it | error
+
+    Dos lineas para UN post, y las dos mintiendo: el post SI salio. Eran los dos intentos de ese
+    dia, el que se llevo un 401 porque la llave de Zeno no llegaba a Xrise y el que se agoto a los
+    45s mientras Instagram procesaba la imagen.
+
+    DOS COSAS ESTABAN MAL Y SON DISTINTAS:
+
+      1. El diario apunta INTENTOS, que es lo correcto para el diario: si no quedara escrito el que
+         fallo, desapareceria justo el que hay que mirar. Lo que no puede es subir a la pantalla
+         tal cual, porque "Hoy has hecho 4 cosas" contando dos intentos del mismo post cuenta mal.
+      2. Repetir una tarjeta de algo que NO se deshace es peor que contar de mas: se lee como que
+         se publico dos veces, que es justo el susto que hay que evitar.
+
+    EL DETALLE NO SE PIERDE: cada linea dice cuantos intentos hubo. Agrupar no es borrar.
+    """
+    grupos: dict[tuple, dict] = {}
+    for x in apuntes:
+        # Por ETIQUETA y TITULO, que es lo que el operador ve. Dos posts distintos con la misma
+        # etiqueta son dos cosas; el mismo post dos veces es una.
+        clave = ((x.get("etiqueta") or x.get("op") or "").strip(), (x.get("titulo") or "").strip())
+        if not clave[1]:
+            # Sin titulo no hay forma de saber si son la misma cosa: se deja tal cual antes que
+            # juntar dos que no lo son.
+            grupos[(clave[0], f"__suelto__{len(grupos)}")] = {**x, "intentos": 1}
+            continue
+        antes = grupos.get(clave)
+        if not antes:
+            grupos[clave] = {**x, "intentos": 1}
+            continue
+        intentos = antes["intentos"] + 1
+        # Se queda el que MANDA (un exito por encima de cualquier fallo), conservando la hora del
+        # ultimo intento, que es cuando de verdad acabo la cosa.
+        gana = x if _MANDA.get(x.get("resultado"), 0) > _MANDA.get(antes.get("resultado"), 0) else antes
+        cuando = max(x.get("cuando") or 0, antes.get("cuando") or 0)
+        grupos[clave] = {**gana, "cuando": cuando, "intentos": intentos}
+    fuera = list(grupos.values())
+    fuera.sort(key=lambda x: x.get("cuando") or 0, reverse=True)
+    return fuera
+
+
 @app.get("/api/hecho")
 async def api_hecho(authorization: str = Header(default="")):
     """Lo que Zeno ha hecho HOY, contado por tipo y con el detalle detras.
@@ -599,6 +652,12 @@ async def api_hecho(authorization: str = Header(default="")):
     """
     _quien(authorization)
     hoy = diario.de_hoy()
+    # LO QUE QUEDO EN DUDA SE RESUELVE AQUI, antes de enseñarlo: un apunte "no se sabe" que nadie
+    # vuelve a mirar se queda mintiendo para siempre sobre algo que si salio. Si se cierra alguno,
+    # se relee para que el historico ya lo cuente bien.
+    if ejecutor.resuelve_dudosos(hoy):
+        hoy = diario.de_hoy()
+    hoy = _una_linea_por_cosa(hoy)
     # Se agrupa por la ETIQUETA, que es lo que el operador reconoce ("Saltar hoy", "Respondi"),
     # no por `op`, que es el nombre tecnico de la accion.
     cuenta: dict[str, int] = {}
@@ -612,7 +671,7 @@ async def api_hecho(authorization: str = Header(default="")):
         "hecho": hoy[:40],          # el detalle, por si se despliega; 40 son de sobra para un dia
         "cuantas": len(hoy),
         "resumen": resumen,
-        # Lo que hay que ir a mirar: un intento del que no se supo el resultado.
+        # Lo que hay que ir a mirar: algo que acabo el dia sin saberse si salio.
         "dudosas": sum(1 for x in hoy if x.get("resultado") == "no_se_sabe"),
     }
 

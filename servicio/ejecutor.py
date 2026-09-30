@@ -166,7 +166,7 @@ def _url_de_comprobar(d: dict) -> str:
     return d["url"].split("?")[0].rsplit("/", 1)[0] + "/" + d["comprobar"]
 
 
-def pregunta_si_salio(d: dict) -> dict | None:
+def pregunta_si_salio(d: dict, espera: int = 20) -> dict | None:
     """Le pregunta al sistema si aquello salio. None si no se puede saber.
 
     SOLO LEE, y por eso va con la clave de LECTURA: preguntar no muta nada. Si esto fallara, la
@@ -178,7 +178,7 @@ def pregunta_si_salio(d: dict) -> dict | None:
     req = urllib.request.Request(url, method="GET", headers={
         "X-Zeno-Key": CLAVE_LECTURA, "X-Zeno-Org": ORG, "Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=20) as r:
+        with urllib.request.urlopen(req, timeout=espera) as r:
             return json.loads(r.read() or b"{}")
     except Exception:                                    # noqa: BLE001
         return None
@@ -263,7 +263,11 @@ def _resuelve(encargo: str, d: dict) -> None:
             # SE APUNTA IGUAL, y marcado como dudoso. Un intento del que no se sabe el resultado
             # es justo el que hay que ir a mirar: si no quedara escrito, seria el unico que
             # desaparece del diario.
-            diario.apunta({**apunte, "resultado": "no_se_sabe", "motivo": texto})
+            # SE GUARDA A QUIEN PREGUNTAR. Sin esto, un apunte dudoso lo es para siempre: el
+            # encargo vive en memoria y un reinicio se lo lleva, asi que nadie vuelve a
+            # comprobarlo y el historico sigue diciendo "no se sabe" sobre algo que si salio.
+            diario.apunta({**apunte, "resultado": "no_se_sabe", "motivo": texto,
+                           "url": d.get("url", ""), "comprobar": d.get("comprobar", "")})
     except Exception as e:                               # noqa: BLE001
         # Se deja dicho en el propio encargo: que no quede escrito en el diario es una perdida, y
         # callarla seria peor que el fallo.
@@ -271,6 +275,46 @@ def _resuelve(encargo: str, d: dict) -> None:
 
     _ENCARGOS[encargo].update(estado=como, codigo=codigo, texto=texto[:200],
                               acabado=time.time(), mensaje=_mensaje(como, codigo, texto))
+
+
+#: Cuantos dudosos se resuelven de una vez al abrir el historico. Un tope, porque esto son
+#: peticiones a otro sistema mientras alguien espera una pantalla.
+_DUDOSOS_DE_UNA_VEZ = 4
+
+
+def resuelve_dudosos(apuntes: list[dict]) -> int:
+    """Pregunta por lo que quedo sin saberse y apunta el desenlace. Devuelve cuantos se cerraron.
+
+    EL CASO (2026-09-30). El historico del operador tenia dos lineas del mismo post, una "error" y
+    otra "no_se_sabe", y el post habia salido. La segunda se quedo asi porque Zeno se reinicio
+    (varios despliegues ese dia) y el encargo, que vive en memoria, se perdio: nadie volvio a mirar.
+
+    NO SE REESCRIBE EL DIARIO, se apunta el desenlace como un renglon mas. El diario es un cuaderno
+    de lo que paso, y lo que paso fue un intento dudoso y despues una comprobacion; borrar el
+    primero seria perder que hubo dudas. Quien junta los dos es el historico, que se queda con el
+    que manda.
+    """
+    cerrados = 0
+    for x in apuntes:
+        if cerrados >= _DUDOSOS_DE_UNA_VEZ:
+            break
+        if x.get("resultado") != "no_se_sabe" or not x.get("comprobar") or not x.get("url"):
+            continue
+        estado = pregunta_si_salio({"url": x["url"], "comprobar": x["comprobar"]}, espera=8)
+        if not estado:
+            continue                      # sigue sin saberse: la duda aguanta, no se inventa
+        if estado.get("publicado"):
+            diario.apunta({**{k: x[k] for k in ("op", "etiqueta", "titulo", "efecto", "publica")
+                              if k in x},
+                           "resultado": "hecho", "codigo": 200, "resuelto_despues": True})
+            cerrados += 1
+        elif not estado.get("en_marcha"):
+            diario.apunta({**{k: x[k] for k in ("op", "etiqueta", "titulo", "efecto", "publica")
+                              if k in x},
+                           "resultado": "error", "motivo": "el sistema dice que no salio",
+                           "resuelto_despues": True})
+            cerrados += 1
+    return cerrados
 
 
 def como_va(encargo: str) -> dict:
