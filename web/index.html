@@ -2562,35 +2562,93 @@ const Voz = (() => {
     // `alOir` recibe lo que se lleva oido y si es ya definitivo. `alAcabar` recibe el texto final
     // o un mensaje de error, que NO es lo mismo que cadena vacia: callarse y fallar se ven igual
     // desde fuera y hay que distinguirlos.
-    arranca(alOir, alAcabar) {
+    // LO CIERRAS TU, NO EL SILENCIO (2026-10-01, modo `largo`). El operador: *"cuando le doy al
+    // micro para poder hablar, deberia ser algo que le diera y luego cuando termina de hablar
+    // tambien le diera para finalizar. Ahora depende de lo que son los silencios que hay entre
+    // medio"*.
+    //
+    // Antes era siempre `continuous = false`: una frase y para. Bien para un "si" o un "no", e
+    // inservible para dictar una idea, que es justo cuando uno hace pausas para pensar.
+    //
+    // POR QUE HAY QUE REABRIR A MANO: `continuous = true` NO basta. Safari, que es el navegador
+    // del iPhone donde se usa esto, cierra igualmente a los pocos segundos de silencio, y lo hace
+    // por `onend` sin dar error. Asi que mientras no se haya PEDIDO parar, se vuelve a abrir y se
+    // acumula lo dicho. Sin esto, en el movil seguiria cortandose en cada pausa con el flag puesto.
+    //
+    // Y UN TOPE, porque la razon por la que esto estaba corto sigue siendo buena: un microfono
+    // abierto se olvida abierto. A los tres minutos se cierra solo y se entrega lo que haya, que
+    // es mejor que perderlo.
+    arranca(alOir, alAcabar, largo) {
       if (!Motor) { alAcabar("", "este navegador no sabe escuchar"); return; }
       if (viva) { this.para(); return; }
-      const r = new Motor();
-      r.lang = "es-ES";
-      r.interimResults = true;           // se va viendo mientras hablas: sin esto parece colgado
-      r.continuous = false;              // una frase y para. Un microfono abierto se olvida abierto
-      r.maxAlternatives = 1;
-      let dicho = "", fallo = "";
-      r.onresult = (e) => {
-        let listo = "", enCurso = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const trozo = e.results[i][0].transcript;
-          if (e.results[i].isFinal) listo += trozo; else enCurso += trozo;
+      // DOS BANDERAS Y NO UNA, porque son dos cosas distintas: `pediste` es que se ha pulsado el
+      // boton (o saltado el tope), y `entregado` es que ya se ha llamado a `alAcabar`. Con una
+      // sola, al pulsar parar el `onend` volveria a abrir el microfono.
+      let dicho = "", fallo = "", pediste = false, entregado = false, r = null;
+      const tope = largo ? 3 * 60 * 1000 : 60 * 1000;
+      const hasta = Date.now() + tope;
+
+      const acabar = () => {
+        if (entregado) return;           // una sola entrega, pase lo que pase
+        entregado = true;
+        viva = null;
+        clearTimeout(reloj);
+        alAcabar(dicho.trim(), fallo);
+      };
+      const reloj = setTimeout(() => {
+        pediste = true;
+        try { r && r.stop(); } catch {}
+        acabar();
+      }, tope);
+
+      const abre = () => {
+        r = new Motor();
+        r.lang = "es-ES";
+        r.interimResults = true;         // se va viendo mientras hablas: sin esto parece colgado
+        r.continuous = !!largo;
+        r.maxAlternatives = 1;
+        r.onresult = (e) => {
+          let listo = "", enCurso = "";
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const trozo = e.results[i][0].transcript;
+            if (e.results[i].isFinal) listo += trozo; else enCurso += trozo;
+          }
+          // Con un espacio entre tandas: al reabrir, la frase nueva empieza donde acabo la otra y
+          // sin esto saldria "hola quetal" pegado.
+          if (listo) dicho += (dicho && !dicho.endsWith(" ") ? " " : "") + listo;
+          alOir((dicho + (enCurso ? " " + enCurso : "")).trim(), !enCurso);
+        };
+        r.onerror = (e) => {
+          // "no-speech" en modo largo NO es un fallo, es una pausa. Tratarlo como error cerraria
+          // el microfono justo por lo que el operador pidio que no lo cerrara.
+          if (largo && e.error === "no-speech") return;
+          // Se traduce a algo que se pueda leer: "not-allowed" en pantalla no dice que hacer.
+          fallo = { "not-allowed": "no has dado permiso al micrófono",
+                    "service-not-allowed": "el navegador no deja usar el micrófono aquí",
+                    "no-speech": "no he oído nada",
+                    "audio-capture": "no encuentro ningún micrófono",
+                    "network": "sin red para transcribir" }[e.error] || ("no he podido escuchar: " + e.error);
+        };
+        r.onend = () => {
+          // Lo ha cerrado el navegador y no el operador: se reabre mientras quede tiempo y no haya
+          // un fallo de verdad. Esto es lo que hace que el iPhone no corte en cada pausa.
+          if (!pediste && largo && !fallo && Date.now() < hasta) {
+            try { abre(); return; } catch {}
+          }
+          acabar();
+        };
+        try {
+          r.start();
+        } catch (e) {
+          fallo = fallo || "no he podido abrir el micrófono";
+          acabar();
         }
-        if (listo) dicho += listo;
-        alOir((dicho + enCurso).trim(), !enCurso);
       };
-      r.onerror = (e) => {
-        // Se traduce a algo que se pueda leer: "not-allowed" en pantalla no dice que hacer.
-        fallo = { "not-allowed": "no has dado permiso al micrófono",
-                  "service-not-allowed": "el navegador no deja usar el micrófono aquí",
-                  "no-speech": "no he oído nada",
-                  "audio-capture": "no encuentro ningún micrófono",
-                  "network": "sin red para transcribir" }[e.error] || ("no he podido escuchar: " + e.error);
-      };
-      r.onend = () => { viva = null; alAcabar(dicho.trim(), fallo); };
-      viva = r;
-      try { r.start(); } catch (e) { viva = null; alAcabar("", "no he podido abrir el micrófono"); }
+
+      // Lo que ve `para()`: pedir parar marca la bandera ANTES de cerrar, para que el `onend` que
+      // viene detras sepa que esta vez no hay que reabrir.
+      viva = { stop: () => { pediste = true; try { r && r.stop(); } catch {} } };
+      abre();
     },
   };
 })();
@@ -2668,10 +2726,13 @@ const Habla = (() => {
 // hablando sale gratis y el tope diario de preguntas se queda para preguntar.
 let conversando = false;
 
-function oye(dice) {
+// `largo` = el microfono lo cierras tu con el boton. Se usa para DICTAR, que es cuando uno hace
+// pausas para pensar. Para un "si" o un "no" se deja el corte automatico: son dos palabras y
+// obligar a pulsar dos veces para decir "si" sobra.
+function oye(dice, largo) {
   return new Promise((listo) => {
-    Voz.arranca((t) => { dice.textContent = t || "escuchando…"; },
-                (texto, fallo) => listo({ texto, fallo }));
+    Voz.arranca((t) => { dice.textContent = t || (largo ? "te escucho… pulsa para terminar" : "escuchando…"); },
+                (texto, fallo) => listo({ texto, fallo }), largo);
   });
 }
 
@@ -2682,7 +2743,7 @@ async function conversa() {
   try {
     while (conversando) {
       b.classList.add("oyendo");
-      const oido = await oye(dice);
+      const oido = await oye(dice, true);     // dictar: lo cierras tu
       b.classList.remove("oyendo");
       dice.textContent = "";
       if (!conversando) break;

@@ -226,3 +226,91 @@ def test_escribiendo_SI_se_pinta(monkeypatch=None):
     i = escrito.index("if (yaPintada)")
     assert "burbuja(\"tu\", texto)" in escrito[i:i + 120], (
         "sin la rama `else` el chat escrito no pinta nada")
+
+
+# ------------------------------------------------------------------ el microfono lo cierras TU
+#
+# EL CASO (2026-10-01). El operador: *"cuando le doy al micro para poder hablar, deberia ser algo
+# que le diera y luego cuando termina de hablar tambien le diera para finalizar. Ahora depende de
+# lo que son los silencios que hay entre medio"*.
+#
+# Estaba en `continuous = false`: una frase y para. Bien para un "si", inservible para dictar una
+# idea, que es justo cuando uno hace pausas para pensar.
+
+def _arranca() -> str:
+    h = _html()
+    return h[h.index("arranca(alOir, alAcabar, largo)"):h.index("// Engancha un boton de microfono")]
+
+
+def test_dictar_usa_el_modo_que_no_cierra_solo():
+    h = _html()
+    conversa = h[h.index("async function conversa()"):h.index("if (Voz.hay)")]
+    assert "await oye(dice, true)" in conversa, "dictar vuelve a cortarse en la primera pausa"
+
+
+def test_un_si_o_un_no_SIGUEN_cortandose_solos():
+    """Lo que no hay que hacer al arreglarlo: obligar a pulsar dos veces para decir 'si'. La
+    confirmacion son dos palabras y el corte automatico ahi esta bien."""
+    h = _html()
+    conversa = h[h.index("async function conversa()"):h.index("if (Voz.hay)")]
+    # La segunda escucha, la de la confirmacion, no pide modo largo.
+    i = conversa.index("const r = await oye(dice")
+    assert "oye(dice)" in conversa[i:i + 40], (
+        "la confirmacion tambien pide pulsar para terminar: para decir 'si' sobra")
+
+
+def test_una_pausa_NO_es_un_error():
+    """`no-speech` es lo que manda el navegador cuando te callas un momento. Tratarlo como fallo
+    cerraria el microfono por exactamente lo que el operador pidio que no lo cerrara."""
+    cuerpo = _arranca()
+    assert 'if (largo && e.error === "no-speech") return;' in cuerpo
+
+
+def test_si_el_navegador_cierra_solo_se_vuelve_a_abrir():
+    """Safari, que es el navegador del iPhone donde se usa esto, cierra a los pocos segundos de
+    silencio aunque `continuous` este puesto, y lo hace por `onend` sin dar error."""
+    cuerpo = _arranca()
+    i = cuerpo.index("r.onend")
+    trozo = cuerpo[i:i + 420]
+    assert "abre()" in trozo, "sin reabrir, en el movil sigue cortandose en cada pausa"
+    assert "!pediste" in trozo, "reabriria incluso cuando lo has cerrado tu"
+
+
+def test_al_pulsar_parar_NO_se_vuelve_a_abrir():
+    """EL FALLO QUE TUVE QUE ARREGLAR ANTES DE APLICARLO: con una sola bandera, pulsar parar
+    disparaba `onend` y el microfono se reabria solo. Son dos cosas distintas: que lo hayas pedido
+    y que ya se haya entregado el texto."""
+    cuerpo = _arranca()
+    assert "pediste = true" in cuerpo and "entregado = true" in cuerpo
+    i = cuerpo.index("viva = { stop:")
+    assert "pediste = true" in cuerpo[i:i + 140], (
+        "parar no marca la bandera antes de cerrar: el onend reabriria")
+
+
+def test_el_texto_se_entrega_UNA_sola_vez():
+    """Con reaperturas hay varios `onend`, y sin esto `alAcabar` se llamaria una vez por cada uno:
+    la misma frase enviada varias veces."""
+    cuerpo = _arranca()
+    assert "if (entregado) return;" in cuerpo
+
+
+def test_lo_dicho_se_acumula_entre_pausas():
+    """Si cada reapertura empezara de cero, dictar una frase larga devolveria solo el ultimo
+    trozo, que es peor que el fallo original."""
+    cuerpo = _arranca()
+    assert "dicho +=" in cuerpo
+    assert 'dicho && !dicho.endsWith(" ")' in cuerpo, "las tandas se pegarian sin espacio"
+
+
+def test_SIGUE_habiendo_un_tope():
+    """La razon por la que esto estaba corto sigue siendo buena: un microfono abierto se olvida
+    abierto. A los tres minutos se cierra y se entrega lo que haya."""
+    cuerpo = _arranca()
+    assert "3 * 60 * 1000" in cuerpo and "setTimeout" in cuerpo
+    assert "clearTimeout(reloj)" in cuerpo, "el reloj queda vivo tras entregar"
+
+
+def test_la_pantalla_dice_que_hay_que_pulsar():
+    """Un microfono que no se cierra solo y no lo dice se queda abierto sin que nadie lo sepa."""
+    h = _html()
+    assert "pulsa para terminar" in h
