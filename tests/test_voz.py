@@ -94,7 +94,7 @@ def test_zeno_solo_habla_si_le_has_hablado():
     que uno lo cierre en la primera reunion."""
     h = _html()
     # `preguntar` es lo que usa el chat escrito, y no puede decir nada en alto por su cuenta.
-    escrito = h[h.index("async function preguntar(desde)"):]
+    escrito = h[h.index("async function preguntar(desde, yaPintada)"):]
     escrito = escrito[:escrito.index("function cargaChat()")]
     assert "Habla.di" not in escrito, "el chat escrito contesta en voz alta"
     # Y la conversacion, que empieza por voz, si.
@@ -189,3 +189,40 @@ def test_si_el_portapapeles_falla_el_texto_no_se_pierde():
     trozo = trozo[:trozo.index("[data-cola-accion]")]
     assert "catch" in trozo and "textarea" in trozo, (
         "si copiar falla, el texto no se enseña en ningún sitio")
+
+
+# ------------------------------------------------------------------ lo dictado sale UNA vez
+#
+# EL CASO (2026-10-01). El operador, con una captura del chat donde cada frase suya aparecia dos
+# veces y Zeno contestaba una: *"en el chat de Zeno duplica las notas por voz"*.
+#
+# `conversa()` pinta lo oido nada mas oirlo, porque lo necesita para las ordenes. Y despues
+# llamaba a `preguntar()`, que pintaba OTRA burbuja con lo mismo. Escribiendo nunca pasaba, y por
+# eso llevaba tiempo sin verse.
+#
+# Y NO ERA SOLO LO QUE SE VE: `preguntar()` lee los turnos de la PANTALLA para mandarlos como
+# contexto, asi que la frase repetida tambien le llegaba al modelo.
+
+def test_lo_dictado_no_se_pinta_dos_veces():
+    h = _html()
+    conversa = h[h.index("async function conversa()"):h.index("if (Voz.hay)")]
+    assert "preguntar(oido.texto, true)" in conversa, (
+        "el modo voz vuelve a pintar lo que ya habia pintado: sale dos veces")
+
+
+def test_preguntar_respeta_que_ya_este_pintada():
+    h = _html()
+    escrito = h[h.index("async function preguntar(desde, yaPintada)"):h.index("function cargaChat()")]
+    assert "if (yaPintada) turnos.pop();" in escrito, (
+        "la frase repetida sigue viajando al modelo como contexto")
+    assert "else burbuja(\"tu\", texto);" in escrito
+
+
+def test_escribiendo_SI_se_pinta(monkeypatch=None):
+    """Lo que no puede pasar al arreglarlo: que el chat escrito deje de pintar lo que escribes.
+    Sin `yaPintada` tiene que seguir pintando."""
+    h = _html()
+    escrito = h[h.index("async function preguntar(desde, yaPintada)"):h.index("function cargaChat()")]
+    i = escrito.index("if (yaPintada)")
+    assert "burbuja(\"tu\", texto)" in escrito[i:i + 120], (
+        "sin la rama `else` el chat escrito no pinta nada")

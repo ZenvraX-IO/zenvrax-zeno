@@ -1169,7 +1169,7 @@ function burbuja(clase, texto) {
 
 // Devuelve lo que contesto Zeno, para que la conversacion por voz pueda decirlo en alto. Con
 // `desde` se le pasa una frase ya dictada en vez de leerla del campo.
-async function preguntar(desde) {
+async function preguntar(desde, yaPintada) {
   const caja = $("#pregunta");
   const texto = (desde !== undefined ? desde : caja.value).trim();
   if (texto.length < 2) return "";
@@ -1182,7 +1182,16 @@ async function preguntar(desde) {
   const turnos = [...document.querySelectorAll("#burbujas .tu, #burbujas .el")]
     .map(b => ({ de: b.classList.contains("tu") ? "yo" : "zeno", texto: b.textContent }))
     .filter(t => t.texto && t.texto !== "pensando…");
-  burbuja("tu", texto);
+  // CUANDO SE HABLA, LA BURBUJA YA ESTA PUESTA (2026-10-01). El modo conversacion pinta lo oido
+  // nada mas oirlo, porque lo necesita para las ordenes; si ademas lo pintara aqui, lo dictado
+  // saldria DOS veces. El operador, con una captura: *"en el chat de Zeno duplica las notas por
+  // voz"*. Escribiendo nunca pasaba, y por eso llevaba tiempo sin verse.
+  //
+  // Y NO ES SOLO LO QUE SE VE: los turnos se leen de la PANTALLA para mandarlos como contexto,
+  // asi que la frase repetida tambien le llegaba al modelo, que contestaba a una pregunta hecha
+  // dos veces.
+  if (yaPintada) turnos.pop();
+  else burbuja("tu", texto);
   const esperando = burbuja("el", "pensando…");
   try {
     const r = await api("/api/chat", { method: "POST",
@@ -2714,8 +2723,9 @@ async function conversa() {
         burbuja("el", o.decir); await Habla.di(o.decir);
         continue;
       }
-      // No era una orden: es una pregunta, y preguntar cuesta.
-      const respuesta = await preguntar(oido.texto);
+      // No era una orden: es una pregunta, y preguntar cuesta. La burbuja de lo oido ya esta
+      // puesta arriba, asi que se dice para que no se pinte otra vez.
+      const respuesta = await preguntar(oido.texto, true);
       if (respuesta) await Habla.di(respuesta);
     }
   } finally {
