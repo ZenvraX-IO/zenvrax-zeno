@@ -712,6 +712,31 @@ def _una_linea_por_cosa(apuntes: list[dict]) -> list[dict]:
     return fuera
 
 
+@app.get("/api/workflow/{nombre}/depurar")
+async def workflow_depurar(nombre: str, authorization: str = Header(default="")):
+    """POR QUE falla un workflow, sin salir de Zeno.
+
+    EL CASO (2026-10-02). El operador, viendo el aviso de que A13d llevaba un mes fallando:
+    *"cuando falle un workflow, pon en Zeno un boton que diga depurar para poder ver de que viene
+    y poderlo solucionar. Si no, estaremos siempre con la consola de Claude Code y no es la
+    situacion"*.
+
+    El aviso decia "Error en workflow: A13d" y ahi se acababa. Saber que pasaba exigia entrar en
+    la base de n8n y desenredar el arbol de la ejecucion. Eso vive ahora en el cockpit
+    (`/ops/workflow/{nombre}/diagnostico`) y esto es su puerta desde el movil.
+
+    SOLO LEE. No arregla el workflow ni lo relanza: dice que nodo revento, con que mensaje, y si
+    esto falla siempre o fue una vez, que es lo que decide si hay que correr.
+    """
+    _quien(authorization)
+    try:
+        return lector.diagnostico_de(nombre)
+    except lector.SinClave as e:
+        raise HTTPException(503, str(e)) from e
+    except Exception as e:                               # noqa: BLE001
+        raise HTTPException(502, f"el cockpit no ha podido decirlo: {type(e).__name__}") from e
+
+
 @app.get("/api/hecho")
 async def api_hecho(authorization: str = Header(default="")):
     """Lo que Zeno ha hecho HOY, contado por tipo y con el detalle detras.

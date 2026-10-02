@@ -332,6 +332,15 @@ def pendientes() -> tuple[list[Pendiente], list[dict], list[str]]:
 _TAREA = "task:"
 
 
+def diagnostico_de(nombre: str) -> dict:
+    """Le pregunta al cockpit por que fallo un workflow. Solo lee.
+
+    Vive aqui y no en el servicio porque aqui esta la forma de hablar con el cockpit, con su clave
+    de lectura y su manejo de fallos: duplicarla en otro sitio seria tener dos.
+    """
+    return _pide(COCKPIT, f"/ops/workflow/{urllib.parse.quote(nombre)}/diagnostico")
+
+
 def _aviso_suelto(sistema: str, n: dict) -> dict:
     """Un aviso que no trae boton del sistema.
 
@@ -350,6 +359,17 @@ def _aviso_suelto(sistema: str, n: dict) -> dict:
         "url": enlaza(sistema, n.get("url") or n.get("link") or ""),
         "acciones": [],
     }
+    # UN WORKFLOW ROTO SE PUEDE DEPURAR DESDE AQUI (2026-10-02). El operador, viendo el aviso de
+    # que A13d fallaba y sin forma de saber por que: *"cuando falle un workflow, pon en Zeno un
+    # boton que diga depurar para poder ver de que viene y poderlo solucionar. Si no, estaremos
+    # siempre con la consola de Claude Code y no es la situacion"*.
+    #
+    # El aviso decia "Error en workflow: A13d" y se acababa ahi. Se guarda el NOMBRE para que la
+    # pantalla pueda pedir el diagnostico, que es lo unico que faltaba.
+    if ident.startswith("alert:") or (aviso["titulo"] or "").startswith("Error en workflow"):
+        aviso["workflow"] = (ident[len("alert:"):] if ident.startswith("alert:")
+                             else aviso["titulo"].split(":", 1)[-1].strip())
+
     if sistema == "cockpit" and ident.startswith(_TAREA):
         aviso["acciones"] = [{
             "etiqueta": "Marcar hecha",

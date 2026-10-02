@@ -839,7 +839,14 @@ async function cargaPendientes() {
                 (a.cuerpo ? '<div class="extracto">' + esc(a.cuerpo) + "</div>" : "") +
                 '<div class="btns">' +
                 (a.url ? '<a class="b" href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
-                         "Abrirlo</a>" : "");
+                         "Abrirlo</a>" : "") +
+                // DEPURAR, para los avisos de workflow roto (2026-10-02). El operador: *"cuando
+                // falle un workflow, pon en Zeno un boton que diga depurar para poder ver de que
+                // viene y poderlo solucionar. Si no, estaremos siempre con la consola de Claude
+                // Code y no es la situacion"*. El aviso decia "Error en workflow: A13d" y se
+                // acababa ahi.
+                (a.workflow ? '<button class="b" data-depurar="' + esc(a.workflow) +
+                              '">Depurar</button>' : "");
         (a.acciones || []).forEach((_, j) => {
           html += '<button class="b" data-aviso="' + i + "-" + j + '">' +
                   esc(a.acciones[j].etiqueta) + "</button>";
@@ -852,6 +859,7 @@ async function cargaPendientes() {
     // Las dos colas del trabajo de hoy se piden APARTE y despues de pintar: tardan mas (el
     // cockpit calcula el reparto del dia) y no tienen por que retrasar el resto de la pantalla.
     pintaColasDeHoy();
+    c.querySelectorAll("[data-depurar]").forEach(b => b.onclick = () => depura(b));
     c.querySelectorAll("[data-aviso]").forEach(b => b.onclick = () => {
       const [i, j] = b.dataset.aviso.split("-").map(Number);
       const a = avisosEnPantalla[i];
@@ -1169,6 +1177,41 @@ function burbuja(clase, texto) {
 
 // Devuelve lo que contesto Zeno, para que la conversacion por voz pueda decirlo en alto. Con
 // `desde` se le pasa una frase ya dictada en vez de leerla del campo.
+// Qué le pasa a un workflow que falla, dicho donde se ve el aviso.
+//
+// NO ARREGLA NADA, y por eso no pide PIN ni confirmación: lee el diagnóstico y lo enseña. Lo que
+// se arregla con esto no es el workflow, es tener que abrir una consola para saber por dónde
+// empezar.
+async function depura(boton) {
+  const nombre = boton.dataset.depurar;
+  const antes = boton.textContent;
+  boton.disabled = true; boton.textContent = "mirando…";
+  let d;
+  try {
+    d = await api("/api/workflow/" + encodeURIComponent(nombre) + "/depurar");
+  } catch (e) {
+    boton.disabled = false; boton.textContent = antes;
+    boton.insertAdjacentHTML("afterend",
+      '<div class="aviso-fallo">' + esc(e.message) + "</div>");
+    return;
+  }
+  boton.disabled = false; boton.textContent = antes;
+  const det = d.detalle || {};
+  // EL VEREDICTO PRIMERO: lo que decide si hay que correr no es el mensaje de error, es si esto
+  // lleva un mes roto o se tropezó una vez.
+  let h = '<div class="propuesta"><div class="q">' + esc(d.veredicto || "") + "</div>";
+  if (det.nodo) h += '<div class="c">Revienta en: ' + esc(det.nodo) + "</div>";
+  if (det.mensaje) h += '<div class="extracto">' + esc(det.mensaje) +
+                        (det.tipo ? " (" + esc(det.tipo) + ")" : "") + "</div>";
+  const hist = (d.historial || []).slice(0, 5).map(x =>
+    (x.estado === "success" ? "ok  " : "FALLA ") +
+    (x.cuando || "").slice(0, 16).replace("T", " ")).join("<br>");
+  if (hist) h += '<div class="extracto" style="opacity:.75">' + hist + "</div>";
+  h += "</div>";
+  boton.closest(".tarjeta").insertAdjacentHTML("beforeend", h);
+}
+
+
 async function preguntar(desde, yaPintada) {
   const caja = $("#pregunta");
   const texto = (desde !== undefined ? desde : caja.value).trim();
