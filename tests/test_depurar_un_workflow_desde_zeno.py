@@ -62,9 +62,17 @@ def test_el_diagnostico_dice_si_falla_SIEMPRE_o_fue_una_vez():
     ops = (RAIZ.parent / "zenvrax-io" / "cockpit" / "api" / "app" / "routers" / "ops.py")
     if not ops.exists():
         return                                    # el cockpit vive en otro repo; se mira si está
-    cuerpo = _funcion(ops.read_text(encoding="utf-8"), "workflow_diagnostico")
-    assert "veredicto" in cuerpo
-    assert "falla SIEMPRE" in cuerpo
+    # El 2026-10-04 el calculo salio a su propia funcion `_veredicto`, para poder probarlo sin
+    # base de datos. Lo que protege esta prueba sigue siendo lo mismo, y ademas que el veredicto
+    # SITUE los fallos respecto al ultimo cambio: A08a se arreglo el 2-oct y la pantalla seguia
+    # dos dias despues diciendo "ha fallado 3 de las ultimas 7", cierto y leido como "sigue roto".
+    texto = ops.read_text(encoding="utf-8")
+    cuerpo = _funcion(texto, "workflow_diagnostico")
+    assert "veredicto" in cuerpo or "_veredicto" in cuerpo
+    calculo = _funcion(texto, "_veredicto")
+    assert "falla SIEMPRE" in calculo
+    assert "ANTERIORES al cambio" in calculo
+    assert "urgente" in calculo
 
 
 def test_el_detalle_sale_de_la_ultima_FALLIDA():
@@ -116,3 +124,14 @@ def test_si_el_cockpit_no_contesta_se_DICE():
         "si el cockpit no contesta, el boton se queda en 'mirando...' para siempre")
     cuerpo_api = _funcion(API, "workflow_depurar")
     assert "502" in cuerpo_api or "503" in cuerpo_api
+
+
+def test_la_pantalla_dice_si_el_error_es_de_ANTES_del_ultimo_cambio():
+    """EL CASO (2026-10-04). A08a se arreglo el 2-oct y dos dias despues esta pantalla seguia
+    ensenando 'Revienta en: Slack Alert SQL' con su mensaje de Slack. Era el fallo que PROVOCO el
+    arreglo, no el motivo por el que falla ahora, y asi se leia. El servidor lo marca con
+    `anterior_al_cambio`; si la pantalla no lo pinta, el dato no sirve de nada."""
+    cuerpo = WEB[WEB.index("async function depura("):]
+    cuerpo = cuerpo[:cuerpo.index("async function preguntar")]
+    assert "det.anterior_al_cambio" in cuerpo
+    assert "antes del ultimo cambio" in cuerpo

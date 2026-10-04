@@ -1200,7 +1200,12 @@ async function depura(boton) {
   // EL VEREDICTO PRIMERO: lo que decide si hay que correr no es el mensaje de error, es si esto
   // lleva un mes roto o se tropezó una vez.
   let h = '<div class="propuesta"><div class="q">' + esc(d.veredicto || "") + "</div>";
-  if (det.nodo) h += '<div class="c">Revienta en: ' + esc(det.nodo) + "</div>";
+  // Si el fallo del que viene el detalle es ANTERIOR al ultimo cambio del workflow, hay que
+  // decirlo aqui mismo: A08a se arreglo el 2-oct y dos dias despues esta pantalla seguia
+  // ensenando el error de Slack, cierto y leido como el motivo por el que falla AHORA.
+  if (det.nodo) h += '<div class="c">' +
+    (det.anterior_al_cambio ? "Reventaba en (antes del ultimo cambio): " : "Revienta en: ") +
+    esc(det.nodo) + "</div>";
   if (det.mensaje) h += '<div class="extracto">' + esc(det.mensaje) +
                         (det.tipo ? " (" + esc(det.tipo) + ")" : "") + "</div>";
   const hist = (d.historial || []).slice(0, 5).map(x =>
