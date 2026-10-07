@@ -252,7 +252,9 @@ async def pendientes(authorization: str = Header(default="")):
                           "comprobar": a.comprobar,
                           "se_puede_abrir": a.se_puede_abrir, "reversible": a.reversible,
                           "metodo": a.metodo, "cuerpo": a.cuerpo,
-                          "se_puede_ejecutar": a.se_puede_ejecutar}
+                          "se_puede_ejecutar": a.se_puede_ejecutar,
+                          # Apagada ahora y por que: el boton se PINTA, en gris y con el motivo.
+                          "bloqueada": a.bloqueada, "motivo_bloqueo": a.motivo_bloqueo}
                          for a in p.acciones],
         } for p in lista],
     }
@@ -581,7 +583,10 @@ async def api_orden(body: Dicho, authorization: str = Header(default="")):
               "acciones": [{"etiqueta": a.etiqueta, "op": a.op, "efecto": a.efecto,
                             "coste_api": a.coste_api, "url": a.url,
                           "comprobar": a.comprobar,
-                            "reversible": a.reversible} for a in p.acciones]}
+                            "reversible": a.reversible} for a in p.acciones
+                           # Lo APAGADO no se empareja con una frase: por voz no se puede
+                           # disparar lo que en la pantalla esta en gris (2026-10-07).
+                           if not a.bloqueada]}
              for p in lista] + avisos_sueltos
     r = ordenes.empareja(body.frase, cosas)
 

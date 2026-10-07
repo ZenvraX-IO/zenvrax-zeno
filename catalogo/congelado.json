@@ -300,7 +300,7 @@
     "kind": "minar"
    },
    "etiqueta": "⛏️ Minar ahora",
-   "linea": 2392,
+   "linea": 2402,
    "comprobar": ""
   },
   {
@@ -450,7 +450,7 @@
    "destino": "https://magnets.zenvrax.com/distribucion/estado.html",
    "cuerpo": {},
    "etiqueta": "Qué falta por producto",
-   "linea": 3065,
+   "linea": 3094,
    "comprobar": ""
   },
   {
@@ -466,7 +466,7 @@
    "destino": "/marketing/distribucion",
    "cuerpo": {},
    "etiqueta": "Abrir la preparación",
-   "linea": 3067,
+   "linea": 3096,
    "comprobar": ""
   },
   {
@@ -482,7 +482,7 @@
    "destino": "https://magnets.zenvrax.com/distribucion/estado.html",
    "cuerpo": {},
    "etiqueta": "Qué falta y por dónde se retoma",
-   "linea": 3146,
+   "linea": 3175,
    "comprobar": ""
   },
   {
@@ -498,7 +498,7 @@
    "destino": "https://magnets.zenvrax.com/xsupport/alta/guia.html",
    "cuerpo": {},
    "etiqueta": "Guía de envío",
-   "linea": 3148,
+   "linea": 3177,
    "comprobar": ""
   },
   {
@@ -514,7 +514,7 @@
    "destino": "/marketing/distribucion",
    "cuerpo": {},
    "etiqueta": "Abrir el panel",
-   "linea": 3149,
+   "linea": 3178,
    "comprobar": ""
   },
   {

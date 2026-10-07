@@ -86,6 +86,13 @@ class Accion:
     cuerpo: dict | None = None
     #: Si Zeno puede dispararla el, o hay que abrir el sistema. Lo dice QUIEN tiene la puerta.
     se_puede_ejecutar: bool = True
+    #: APAGADA ahora mismo, y por que. No es lo mismo que `se_puede_ejecutar`, que dice si Zeno
+    #: tiene permiso: esto dice que HOY NO TOCA (ya esta hecho, ya esta encargado, no hay nada que
+    #: hacer). La cola lo manda en `disabled`/`disabled_reason` y el boton se ve apagado con el
+    #: motivo al lado: una accion que desaparece obliga a adivinar si es que no tocaba o es que
+    #: algo se rompio (operador, 2026-10-07).
+    bloqueada: bool = False
+    motivo_bloqueo: str = ""
 
     @property
     def se_puede_abrir(self) -> bool:
@@ -252,6 +259,8 @@ def _acciones(sistema: str, brutas: list, indice: dict) -> list:
             cuerpo=cuerpo,
             # Por omision True: los avisos del feed no traen la marca y ahi Zeno ya disparaba.
             se_puede_ejecutar=bool(a.get("zeno_puede", True)),
+            bloqueada=bool(a.get("disabled")),
+            motivo_bloqueo=str(a.get("disabled_reason") or ""),
         ))
     return fuera
 

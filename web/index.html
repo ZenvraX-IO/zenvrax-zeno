@@ -104,6 +104,13 @@
   .b.primaria{background:var(--ambar);color:#221a08;border-color:var(--ambar);font-weight:600}
   .b.gasta{background:none;border-color:#50302a;color:var(--rojo-claro)}
   .b.sin{border-style:dashed;color:var(--gris)}
+  /* APAGADA: la accion sigue estando, pero ahora no toca. Se ve que existe, sin invitar a
+     pulsarla. Que desapareciera obligaba a adivinar si es que no tocaba o si algo se habia
+     roto (operador, 2026-10-07). */
+  .b.apagada{background:none;border-color:var(--linea);color:var(--gris);cursor:default;
+             font-weight:500;opacity:.75}
+  .porque-apagada{display:block;font-size:11.5px;color:var(--gris);margin-top:6px;
+                  line-height:1.45}
   .marca-accion{font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;padding:2px 6px;
                 border-radius:5px}
   .m-mundo{background:#40201c;color:#ffb3aa}
@@ -654,6 +661,13 @@ function pintaAccion(a, i, j) {
   // Desde J4 lo que EJECUTA también es un botón, pero de dos tiempos: pulsarlo no hace nada todavía,
   // abre la confirmación. Y lo que sale al mundo pide el PIN.
   if (!a.op) return `<span class="b sin">${esc(a.etiqueta)} · sin contrato</span>`;
+  // APAGADA: ahora no toca. El botón se pinta igual, en gris y sin `data-hacer`, así que pulsarlo
+  // no hace nada, y debajo va el motivo. Es a propósito que no desaparezca: una acción que unas
+  // veces está y otras no obliga a adivinar si es que no tocaba o si algo se rompió.
+  if (a.bloqueada) {
+    return `<span class="b apagada">${esc(a.etiqueta)}</span>`
+         + (a.motivo_bloqueo ? `<span class="porque-apagada">${esc(a.motivo_bloqueo)}</span>` : "");
+  }
   const marcas = [];
   if (a.coste_api) marcas.push('<span class="marca-accion m-cuesta">cuesta</span>');
   const texto = `${esc(a.etiqueta)} ${marcas.join(" ")}`;
@@ -848,8 +862,17 @@ async function cargaPendientes() {
                 (a.workflow ? '<button class="b" data-depurar="' + esc(a.workflow) +
                               '">Depurar</button>' : "");
         (a.acciones || []).forEach((_, j) => {
+          const ac = a.acciones[j];
+          // Apagada: se pinta igual pero sin `data-aviso`, asi que no engancha el pulsador. El
+          // mismo criterio que en `pintaAccion`, que es la otra puerta por donde salen botones.
+          if (ac.bloqueada) {
+            html += '<span class="b apagada">' + esc(ac.etiqueta) + "</span>" +
+                    (ac.motivo_bloqueo ? '<span class="porque-apagada">' +
+                                         esc(ac.motivo_bloqueo) + "</span>" : "");
+            return;
+          }
           html += '<button class="b" data-aviso="' + i + "-" + j + '">' +
-                  esc(a.acciones[j].etiqueta) + "</button>";
+                  esc(ac.etiqueta) + "</button>";
         });
         html += "</div></div>";
       }
