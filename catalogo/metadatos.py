@@ -207,4 +207,28 @@ CONTRATOS: dict[str, Contrato] = {
         op="abrir.preview_gutlyn",
         que_hace="Abre la vista previa del post organico de GutLyn",
         efecto=ABRE, reversible=True, confirmar=False),
+
+    # ---------------- Encargarle trabajo a la extension de Chrome ----------------
+    #
+    # Declarada el 2026-10-07, cuando el operador pidio poder lanzar el minado desde el movil:
+    # *"en caso de que no este delante del ordenador, lo puedo hacer desde la aplicacion"*.
+    #
+    # ESTO NO MINA. Minar necesita la sesion de LinkedIn del navegador, que en el movil no existe.
+    # Lo que hace es dejar el encargo en el buzon del cockpit; la extension lo recoge en menos de
+    # cinco minutos si Chrome esta abierto, y si esta cerrado el encargo espera sin caducar. Por
+    # eso la respuesta del POST ya es la verdad y `comprobar` se queda vacio: no hay una espera
+    # larga en la que dudar, como si la habia al publicar en Meta.
+    #
+    # `coste_api` es True aunque el minado en si solo LEA LinkedIn: lo que trae entra en A13a y se
+    # puntua con Haiku. Medido el 7-oct: unos 0,26 USD por cada 266 perfiles, asi que un dia de
+    # minado encadenado ronda 1,5 USD. El operador tiene regla dura de aprobar el gasto antes, y
+    # un encargo hecho desde el movil no se puede saltar esa regla por comodidad.
+    "cockpit|POST|/marketing/linkedin/sync-request|kind=minar|⛏️ Minar ahora": Contrato(
+        op="minado.encargar",
+        que_hace=("Encarga a la extension de Chrome que mine las conexiones del siguiente "
+                  "contacto elegido. No mina desde el movil: deja el encargo y la extension lo "
+                  "recoge cuando Chrome este abierto"),
+        efecto=CAMBIA_ESTADO, reversible=True, coste_api=True,
+        guarda=("tope diario de llamadas de la extension, reserva para la noche y parada en seco "
+                "si LinkedIn responde con rate-limit; pedirlo dos veces no encola dos minados")),
 }

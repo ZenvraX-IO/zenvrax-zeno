@@ -1,5 +1,5 @@
 {
- "generado": "2026-09-30",
+ "generado": "2026-10-07",
  "acciones": [
   {
    "op": "linkedin.aprobar_y_publicar",
@@ -286,6 +286,24 @@
    "comprobar": ""
   },
   {
+   "op": "minado.encargar",
+   "que_hace": "Encarga a la extension de Chrome que mine las conexiones del siguiente contacto elegido. No mina desde el movil: deja el encargo y la extension lo recoge cuando Chrome este abierto",
+   "sistema": "cockpit",
+   "efecto": "cambia_estado",
+   "reversible": true,
+   "coste_api": true,
+   "confirmar": true,
+   "guarda": "tope diario de llamadas de la extension, reserva para la noche y parada en seco si LinkedIn responde con rate-limit; pedirlo dos veces no encola dos minados",
+   "verbo": "POST",
+   "destino": "/marketing/linkedin/sync-request",
+   "cuerpo": {
+    "kind": "minar"
+   },
+   "etiqueta": "⛏️ Minar ahora",
+   "linea": 2392,
+   "comprobar": ""
+  },
+  {
    "op": "abrir.magnets_para_copiar",
    "que_hace": "Abre la pantalla de magnets para copiar el texto",
    "sistema": "cockpit",
@@ -298,7 +316,7 @@
    "destino": "/marketing/magnets",
    "cuerpo": {},
    "etiqueta": "🔍 Revisar y copiar",
-   "linea": 839,
+   "linea": 892,
    "comprobar": ""
   },
   {
@@ -316,7 +334,7 @@
     "x_status": "posted"
    },
    "etiqueta": "✅ Marcar publicado",
-   "linea": 840,
+   "linea": 893,
    "comprobar": ""
   },
   {
@@ -334,7 +352,7 @@
     "x_status": "cancelled"
    },
    "etiqueta": "✕ Descartar thread",
-   "linea": 842,
+   "linea": 895,
    "comprobar": ""
   },
   {
@@ -350,7 +368,7 @@
    "destino": "<dinamico>",
    "cuerpo": {},
    "etiqueta": "👁️ Ver la carta",
-   "linea": 902,
+   "linea": 955,
    "comprobar": ""
   },
   {
@@ -366,7 +384,7 @@
    "destino": "/newsletter/letters/{slug}/send",
    "cuerpo": {},
    "etiqueta": "✅ Aprobar y enviar",
-   "linea": 903,
+   "linea": 956,
    "comprobar": ""
   },
   {
@@ -382,7 +400,7 @@
    "destino": "{N8N_PUBLIC}/webhook/newsletter-confirm?nl_id={nl}&action=mark_published",
    "cuerpo": {},
    "etiqueta": "📰 Publicar / confirmar",
-   "linea": 941,
+   "linea": 994,
    "comprobar": ""
   },
   {
@@ -398,7 +416,7 @@
    "destino": "<dinamico>",
    "cuerpo": {},
    "etiqueta": "📋 Abrir guía de montaje",
-   "linea": 1079,
+   "linea": 1132,
    "comprobar": ""
   },
   {
@@ -416,7 +434,7 @@
     "scheduled_in_li": true
    },
    "etiqueta": "✅ Ya está programado",
-   "linea": 1080,
+   "linea": 1133,
    "comprobar": ""
   },
   {
@@ -432,7 +450,7 @@
    "destino": "https://magnets.zenvrax.com/distribucion/estado.html",
    "cuerpo": {},
    "etiqueta": "Qué falta por producto",
-   "linea": 2820,
+   "linea": 3065,
    "comprobar": ""
   },
   {
@@ -448,7 +466,7 @@
    "destino": "/marketing/distribucion",
    "cuerpo": {},
    "etiqueta": "Abrir la preparación",
-   "linea": 2822,
+   "linea": 3067,
    "comprobar": ""
   },
   {
@@ -464,7 +482,7 @@
    "destino": "https://magnets.zenvrax.com/distribucion/estado.html",
    "cuerpo": {},
    "etiqueta": "Qué falta y por dónde se retoma",
-   "linea": 2901,
+   "linea": 3146,
    "comprobar": ""
   },
   {
@@ -480,7 +498,7 @@
    "destino": "https://magnets.zenvrax.com/xsupport/alta/guia.html",
    "cuerpo": {},
    "etiqueta": "Guía de envío",
-   "linea": 2903,
+   "linea": 3148,
    "comprobar": ""
   },
   {
@@ -496,7 +514,7 @@
    "destino": "/marketing/distribucion",
    "cuerpo": {},
    "etiqueta": "Abrir el panel",
-   "linea": 2904,
+   "linea": 3149,
    "comprobar": ""
   },
   {
@@ -512,7 +530,7 @@
    "destino": "https://n8n.zenvrax.com/webhook/gutlyn-claire-preview?id={pid}",
    "cuerpo": {},
    "etiqueta": "👀 Ver preview",
-   "linea": 183,
+   "linea": 197,
    "comprobar": ""
   },
   {
@@ -530,7 +548,7 @@
     "action": "publish"
    },
    "etiqueta": "✅ Aprobar y publicar",
-   "linea": 185,
+   "linea": 199,
    "comprobar": ""
   },
   {
@@ -548,7 +566,7 @@
     "action": "regenerate"
    },
    "etiqueta": "🔄 Regenerar",
-   "linea": 187,
+   "linea": 201,
    "comprobar": ""
   },
   {
@@ -566,7 +584,7 @@
     "action": "drop"
    },
    "etiqueta": "⏭️ No postear (posponer)",
-   "linea": 189,
+   "linea": 203,
    "comprobar": ""
   },
   {
@@ -582,7 +600,7 @@
    "destino": "https://n8n.zenvrax.com/webhook/meta-preview?id={pid}",
    "cuerpo": {},
    "etiqueta": "👀 Ver preview",
-   "linea": 197,
+   "linea": 211,
    "comprobar": ""
   },
   {
@@ -600,7 +618,7 @@
     "action": "publish"
    },
    "etiqueta": "✅ Aprobar y publicar",
-   "linea": 198,
+   "linea": 212,
    "comprobar": "estado"
   },
   {
@@ -618,7 +636,7 @@
     "action": "regenerate"
    },
    "etiqueta": "🔄 Regenerar",
-   "linea": 200,
+   "linea": 214,
    "comprobar": ""
   },
   {
@@ -634,7 +652,7 @@
    "destino": "/marketing/reorder/enroll",
    "cuerpo": {},
    "etiqueta": "✅ Lanzar campaña de recompra",
-   "linea": 331,
+   "linea": 385,
    "comprobar": ""
   },
   {
@@ -650,7 +668,7 @@
    "destino": "/engagement/comments/{cid}/publish",
    "cuerpo": {},
    "etiqueta": "✅ Aprobar y publicar",
-   "linea": 304,
+   "linea": 358,
    "comprobar": ""
   },
   {
@@ -666,7 +684,7 @@
    "destino": "/engagement/comments/{cid}/discard",
    "cuerpo": {},
    "etiqueta": "🗑️ Descartar respuesta",
-   "linea": 305,
+   "linea": 359,
    "comprobar": ""
   }
  ]

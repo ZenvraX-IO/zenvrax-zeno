@@ -74,8 +74,8 @@ repo: la dependencia va al revés, esto **lee** el código de las dos aplicacion
 
 El asistente va a ejecutar cosas en nombre del operador. Solo el cockpit tiene **190 rutas que
 mutan**, y Xrise las suyas: si se le da esa API y se le pide que actúe, elige la llamada, y elegir es
-adivinar. Así que la lista está cerrada: **40 acciones** (30 del cockpit, 10 de Xrise), las que ya son botones
-en las dos colas de aprobación, cada una con su contrato. **27 escriben algo**; las otras 13 solo
+adivinar. Así que la lista está cerrada: **41 acciones** (31 del cockpit, 10 de Xrise), las que ya son botones
+en las dos colas de aprobación, cada una con su contrato. **28 escriben algo**; las otras 13 solo
 abren una pantalla.
 
 ```
@@ -88,12 +88,12 @@ ver_catalogo.py   para mirarlo: --ejecutan, --alcance, --json
 tests/            10 pruebas, las cinco regresiones probadas con el fallo dentro
 ```
 
-**Medido el 2026-09-27:**
+**Medido el 2026-09-27, revisado el 2026-10-07** (entra encargar el minado desde el movil):
 
 | | cuántas | qué son |
 |---|---|---|
 | Sale al mundo | 8 | publican en LinkedIn, X, Meta o mandan correo. Irreversibles |
-| Cambia estado | 12 | mueven algo dentro. 3 de ellas **gastan API de pago** |
+| Cambia estado | 20 | mueven algo dentro. 4 de ellas **gastan API de pago** |
 | Solo abre | 13 | enlaces y vistas previas. No son acciones: no se confirman |
 
 ## El hallazgo que justifica la fase
